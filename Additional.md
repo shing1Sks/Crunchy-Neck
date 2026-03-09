@@ -1,0 +1,1 @@
+Inturuption pipeline : user sends in messages which are passed mid way for ai to handle user input
