@@ -1,0 +1,18 @@
+# Crunchy-Neck-Agent dependencies
+# Python >= 3.10 required (dataclasses kw_only, match/case)
+
+# ── exec / process tools ──────────────────────────────────────────────────────
+# No third-party deps — stdlib only.
+
+# ── Future tools (add as implemented) ─────────────────────────────────────────
+# openai                  # LLM API (GPT-5.2)
+# anthropic               # Claude API fallback
+# python-telegram-bot     # Telegram adapter
+# slack-sdk               # Slack adapter
+# discord.py              # Discord adapter
+# google-genai            # Gemini (browser/vision agent)
+# pyautogui               # browser agent desktop control
+# pillow                  # screenshots
+# pydantic                # schema validation
+# python-dotenv           # .env loading
+# nanoid                  # session ID generation (or use uuid, already stdlib)

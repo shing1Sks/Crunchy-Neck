@@ -23,3 +23,5 @@ If low confidence after search, say you checked.
 
 Citations: include Source: <path#line> when it helps the user verify memory snippets."
 
+
+$env:PYTHONPATH = "C:\Users\SHREYASH KUMAR SINGH\Desktop\Crunchy-Neck-Agent"

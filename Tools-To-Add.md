@@ -1,3 +1,5 @@
+Just rough plan needs modifying
+
 Tier 1 — Non-negotiable core
 exec(command, intent) File ops, CLI calls, installs — everything flows through this
 read(path) Can't act on anything without reading it first
