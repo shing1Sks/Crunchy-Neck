@@ -7,7 +7,7 @@ Tier 1 — Non-negotiable core
 >edit(path, old, new)Surgical edits without full overwrites
 ping_user(msg, type, medium = whatsapp/telegram) Ask/update — the human in the loop
 remember(query) Long-term memory retrieval
-web_search(query) for searching for a query / link
+<!-- web_search(query) for searching for a query / link | leave it to default model capabilities -->
 
 Tier 2 — Makes it actually useful
 >process(action, session_id) Manage long-running background processes from exec

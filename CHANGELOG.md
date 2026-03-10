@@ -6,6 +6,69 @@ All notable changes to Crunchy-Neck-Agent are documented here.
 
 ## [Unreleased] — 2026-03-10
 
+### Added — `comm_channels/ping_user` (user communication layer)
+
+Complete implementation of the `ping_user(msg, type, medium=)` tool — the agent's voice. Sends messages and blocking queries to the user via Telegram or terminal.
+
+**Core files:**
+- `comm_channels/ping_tool.py` — main dispatcher: validates params → routes to medium → audits outcome
+- `comm_channels/ping_types.py` — `PingParams` dataclass and the discriminated-union result variants (`PingResultSent`, `PingResultResponse`, `PingResultError`)
+- `comm_channels/templates.py` — per-type format strings for both mediums; `escape_mdv2()` escapes all user-supplied text for safe inclusion in Telegram MarkdownV2 messages
+- `comm_channels/_state.py` — thread-safe load/save of `.agent/comm/telegram_state.json`; persists `last_update_message_id` for in-place editing of update messages
+- `comm_channels/audit.py` — thread-safe JSONL audit log at `.agent/audit/ping-{date}.jsonl`
+- `comm_channels/__init__.py` — `TOOL_DEFINITION` JSON schema for LLM function calling
+
+**Telegram subpackage (`comm_channels/telegram/`):**
+- `config.py` — loads `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` from `os.environ` or a `.env` file at the workspace root; raises `ConfigError` on missing vars
+- `client.py` — thin `urllib.request` wrapper (zero extra deps); named methods: `send_message`, `edit_message_text`, `get_updates`, `answer_callback_query`; all route through `_call()` which raises `TelegramAPIError` on failure
+- `sender.py` — four send functions (`send_update`, `send_chat`, `send_query_msg`, `send_query_options`) + long-poll loops (`_poll_for_text_reply`, `_poll_for_callback`)
+
+**Terminal subpackage (`comm_channels/terminal/`):**
+- `channel.py` — stdlib `print`/`input` fallback; works without any config or network
+
+**Parameters:** `msg`, `type` (required); `medium` (default `telegram`), `options`, `title`, `timeout` (default 120s), `edit_last_update` (default `True`)
+
+**Message types:**
+| type | direction | Telegram mechanics |
+|---|---|---|
+| `update` | one-way | `editMessageText` in-place (falls back to `sendMessage` on failure); persists `last_update_message_id` in state |
+| `chat` | one-way | `sendMessage` plain text |
+| `query:msg` | blocking | `sendMessage` + `ForceReply`; polls `getUpdates` for a message replying to the sent one |
+| `query:options` | blocking | `sendMessage` + `InlineKeyboardMarkup`; polls `getUpdates` for `callback_query`; calls `answerCallbackQuery` immediately on match |
+
+**Return variants** (discriminated on `status`):
+- `sent` — `message_id`
+- `response` — `response` (user's text or selected option label), `message_id`
+- `error` — `error_code`, `detail`
+
+**Error codes:** `not_configured`, `timeout`, `send_failed`, `invalid_params`, `medium_error`
+
+**Key behaviours:**
+- All four message types go to the same `TELEGRAM_CHAT_ID` — no separate channel vs DM split
+- `update` edits the previous message in-place when `edit_last_update=True`; Telegram's "message is not modified" 400 is treated as success (not an error)
+- Poll loops advance `offset` for every update (including non-matching ones) to prevent re-delivery; offset is local to each call, not persisted
+- `answerCallbackQuery` is called immediately on callback match to dismiss the Telegram button spinner (must happen within ~10 s)
+- `escape_mdv2()` uses a single compiled regex to escape all 19 MarkdownV2 special characters in user-supplied content; structural template markup (`*bold*`, `_italic_`) is not escaped
+
+**Audit events:** `ping.invalid_params`, `ping.done`
+
+**Test suite:** `comm_channels/test_ping.py` — 24 cases, 57 checks, 57/57 passing
+- Missing options list, missing env vars, terminal update (with/without title), terminal chat, terminal query:msg (mocked stdin), terminal query:options (valid / out-of-range / non-numeric / stdin closed), Telegram send_update (no prior state / edit succeeds / "not modified" / edit fails→fallback / edit_last_update=False), Telegram chat (success / send_failed), Telegram query:msg (reply arrives / timeout), Telegram query:options (callback arrives / timeout), state file corrupt JSON recovery, audit file written, escape_mdv2 special characters
+
+---
+
+### Added — `.env.example`
+
+Template environment file documenting the two required Telegram variables (`TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`) with inline instructions for finding each value via `getUpdates`.
+
+---
+
+### Fixed — single `TELEGRAM_CHAT_ID` (design simplification)
+
+Initial design used two separate env vars (`TELEGRAM_CHANNEL_ID` for `update` type, `TELEGRAM_USER_CHAT_ID` for all others). Collapsed to a single `TELEGRAM_CHAT_ID` used by all four message types, matching the real-world usage pattern where the agent talks to one person in one chat.
+
+---
+
 ### Added — `tools/exec` (terminal interaction layer)
 
 Complete implementation of the `exec(command, intent)` tool — the single gateway through which the agent touches the host system.

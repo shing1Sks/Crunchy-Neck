@@ -4,15 +4,17 @@
 # ── exec / process tools ──────────────────────────────────────────────────────
 # No third-party deps — stdlib only.
 
+# ── comm_channels / ping_user ─────────────────────────────────────────────────
+# No third-party deps — HTTP via stdlib urllib.request.
+# .env parsing is handled manually in telegram/config.py (no python-dotenv needed).
+
 # ── Future tools (add as implemented) ─────────────────────────────────────────
-# openai                  # LLM API (GPT-5.2)
-# anthropic               # Claude API fallback
-# python-telegram-bot     # Telegram adapter
-# slack-sdk               # Slack adapter
-# discord.py              # Discord adapter
+# openai                  # LLM API
+# anthropic               # Claude API
+# slack-sdk               # Slack comm-channel adapter
+# discord.py              # Discord comm-channel adapter
 # google-genai            # Gemini (browser/vision agent)
 # pyautogui               # browser agent desktop control
-# pillow                  # screenshots
+# pillow                  # screenshots (send_user_media)
 # pydantic                # schema validation
-# python-dotenv           # .env loading
 # nanoid                  # session ID generation (or use uuid, already stdlib)
