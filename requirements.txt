@@ -8,6 +8,11 @@
 # No third-party deps — HTTP via stdlib urllib.request.
 # .env parsing is handled manually in telegram/config.py (no python-dotenv needed).
 
+# ── memory / remember tool ─────────────────────────────────────────────────────
+chromadb==0.4.24            
+onnxruntime==1.24.3  
+numpy<2.0       
+
 # ── Future tools (add as implemented) ─────────────────────────────────────────
 # openai                  # LLM API
 # anthropic               # Claude API

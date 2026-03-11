@@ -225,15 +225,55 @@ Single shared module imported by all three file-op tools.
 
 ---
 
+### Added — `tools/remember` (long-term semantic memory)
+
+`remember(action, ...)` — persistent memory across sessions using ChromaDB vector embeddings.
+
+**Core files:**
+- `tools/remember/remember_tool.py` — dispatcher for `store`, `query`, `list`, `delete` actions; per-`chroma_dir` store registry (thread-safe, test-isolated)
+- `tools/remember/remember_types.py` — `RememberParams`, `MemoryHit`, and discriminated-union result variants (`RememberResultStored`, `RememberResultQueried`, `RememberResultListed`, `RememberResultDeleted`, `RememberResultError`)
+- `tools/remember/audit.py` — thread-safe JSONL audit log at `.agent/audit/memory-{date}.jsonl`
+- `tools/remember/__init__.py` — `TOOL_DEFINITION` JSON schema for LLM function calling
+
+**Memory layer (`memory/long_term_mem/store.py`):**
+- `LongTermMemStore` — thread-safe wrapper around ChromaDB `PersistentClient`; lazy-initialised on first use
+- Stores documents with `timestamp`, `session_id`, `tags` (CSV) metadata
+- `store()` → `(memory_id, iso_timestamp)`; `query()` → `(hits, total)`; `list_all()` → `(items, total)`; `delete()` → `bool`
+- Data persists at `{workspace_root}/.agent/memory/chroma/`
+
+**Parameters:** `action` (required); `content` (store), `query` + `n_results` (query, default 5, clamped 1–50), `memory_id` (delete), `tags` (store, optional)
+
+**Return variants** (discriminated on `status`):
+- `stored` — `memory_id`, `content_preview`, `tags`, `timestamp`
+- `queried` — `query`, `hits` (list of `MemoryHit`), `total_in_collection`
+- `listed` — `memories` (list of `MemoryHit`), `total`
+- `deleted` — `memory_id`
+- `error` — `error_code`, `error_message`
+
+**Error codes:** `MISSING_CONTENT`, `MISSING_QUERY`, `MISSING_MEMORY_ID`, `MEMORY_NOT_FOUND`, `CHROMA_UNAVAILABLE`, `CHROMA_ERROR`, `INVALID_ACTION`, `INTERNAL`
+
+**Test suite:** `tools/remember/test_remember.py` — 17 cases, 60 checks, 60/60 passing
+- `CHROMA_UNAVAILABLE` (no chromadb), store smoke test, `MISSING_CONTENT` (None/empty), query smoke test, `MISSING_QUERY`, n_results clamping, query on empty collection, list smoke test, list on empty collection, delete smoke test, `MEMORY_NOT_FOUND`, `MISSING_MEMORY_ID`, persistence across store instances, audit log (JSONL + all event types), tags round-trip, `INVALID_ACTION`, unicode content round-trip
+
+---
+
+### Fixed — chromadb / onnxruntime install on Windows
+
+- **C++ redistributable required** — `onnxruntime` (pulled in by chromadb's default embedding function) requires the MSVC runtime. Install via Visual Studio Build Tools.
+- **numpy pin** — `onnxruntime 1.17` is incompatible with numpy 2.x. Pinned `numpy<2` in `requirements.txt`.
+- **venv rebuild** — existing venv had conflicting package state after pin changes; required full teardown and recreation.
+
+---
+
 ### Updated — `tools/__init__.py`
 
-Now exposes all five tools at the package root:
+Now exposes all six tools at the package root:
 
 ```python
-from tools import ALL_TOOLS  # list of all 5 TOOL_DEFINITION dicts
+from tools import ALL_TOOLS  # list of all 6 TOOL_DEFINITION dicts
 ```
 
-Exports: `exec_command`, `process_command`, `read_command`, `write_command`, `edit_command` and their corresponding `*Params` classes and `*_TOOL` definition dicts.
+Exports: `exec_command`, `process_command`, `read_command`, `write_command`, `edit_command`, `remember_command` and their corresponding `*Params` classes and `*_TOOL` definition dicts.
 
 ---
 
