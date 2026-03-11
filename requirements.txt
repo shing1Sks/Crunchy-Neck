@@ -21,8 +21,11 @@ Pillow                      # ImageGrab for desktop screenshots; also used by im
 # ── image_gen tool ────────────────────────────────────────────────────────────
 google-genai                # Gemini image generation SDK
 
-# ── prompt_compaction / agent loop ────────────────────────────────────────────
-openai                      # GPT-5.2 compaction calls (prompt_compaction.py)
+# ── skill_use / prompt builder ────────────────────────────────────────────────
+pyyaml                      # YAML frontmatter parsing in skill_use.py
+
+# ── memory_compaction / agent loop ────────────────────────────────────────────
+openai                      # GPT-5.2 compaction calls (memory_compaction.py)
 tiktoken                    # accurate token counting in estimate_tokens(); falls back to char/4 heuristic if absent
 
 # ── Future tools (add as implemented) ─────────────────────────────────────────

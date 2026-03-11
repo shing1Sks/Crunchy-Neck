@@ -1,5 +1,5 @@
 """
-prompt_compaction.py — rolling-window context compaction for the Crunchy Neck agent loop.
+memory_compaction.py — rolling-window context compaction for the Crunchy Neck agent loop.
 
 Trigger logic (from Compaction.md):
     COMPACT_THRESHOLD = threshold_ratio * max_context_tokens
@@ -15,7 +15,7 @@ The compaction call is made via OpenAI (GPT-5.2). The openai package is imported
 lazily inside run_compaction so this module is importable even if openai is absent.
 
 Usage in the agent loop:
-    from agent_design.prompt_compaction import maybe_compact
+    from agent_design.memory_compaction import maybe_compact
 
     messages, result = maybe_compact(messages, api_key=os.environ["OPENAI_API_KEY"])
     if result.status == "error":

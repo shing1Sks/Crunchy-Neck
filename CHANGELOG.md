@@ -6,11 +6,78 @@ All notable changes to Crunchy-Neck-Agent are documented here.
 
 ## [Unreleased] — 2026-03-11
 
-### Added — `agent-design/prompt_compaction.py` (rolling-window context compaction)
+### Added — `agent-design/skill_use.py` + `skills/_template/SKILL.md` (skill discovery & prompt injection)
+
+Implements the skill selection protocol described in `Model-Skills-Architecture.md`. Produces Section 6 ("Skills") of the system prompt and is the only module the system-prompt builder needs to call.
+
+**Core file:** `agent-design/skill_use.py`
+
+**Public API:**
+- `build_skill_section(workspace_root)` → `str` — main entry point; scans eligible skills and returns the complete Section 6 string (mandatory header + `<available_skills>` XML block) ready to insert into the system prompt
+- `scan_skills(workspace_root)` → `list[dict]` — walks `<workspace>/skills/`, parses YAML frontmatter, applies all eligibility rules, returns `{name, description, location, meta}` dicts
+- `format_skills_for_prompt(skills)` → `str` — builds the `<available_skills>` XML block; compresses home-dir paths to `~/`; enforces 150-skill and 30,000-char limits
+
+**Eligibility rules (all must pass unless `always: true`):**
+| Rule | Effect |
+|---|---|
+| `enabled: false` | excluded |
+| `disable-model-invocation: true` | excluded (user-only slash-cmd skill) |
+| `always: true` | bypasses all remaining checks |
+| `requires.anyBins` | excluded if none of the listed binaries exist on PATH |
+| `requires.env` | excluded if any listed env var is absent |
+| `os` | excluded if current OS not in list; empty list = all OSes |
+
+**Discovery limits:**
+- `maxCandidatesPerRoot = 300` — directory scan cap
+- `maxSkillsLoaded = 200` — total skills cap
+- `maxSkillFileBytes = 256 KB` — oversized SKILL.md files skipped
+- Directories starting with `_` (e.g. `_template/`) are always skipped
+
+**Mandatory instruction injected into system prompt:**
+```
+## Skills (mandatory)
+
+Before replying: scan <available_skills> <description> entries.
+- If exactly one skill clearly applies: read its SKILL.md at <location>
+  using the `read` tool, then follow it.
+- If multiple could apply: choose the most specific one, then read and follow it.
+- If none clearly apply: do not read any SKILL.md.
+
+Constraints:
+  - Never read more than one skill up front.
+  - Only read after selecting — never speculatively.
+  - Skills live at: <workspace>/skills/<skill-name>/SKILL.md
+```
+
+**Skill template:** `skills/_template/SKILL.md` — canonical starting point for new skills. Copy the folder, fill in the YAML frontmatter (`name`, `description`, eligibility fields) and four sections (`When to use`, `Steps`, `Examples`, `Notes`).
+
+**New dependency** (`requirements.txt`): `pyyaml` (YAML frontmatter parsing; graceful degradation if absent — all skills treated as eligible)
+
+**Test suite:** `agent-design/tests/test_skill_use.py` — 48 checks, all passing. Runs directly: `python agent-design/tests/test_skill_use.py`
+- `_parse_frontmatter`: valid YAML, no fence, empty block, malformed YAML (no crash), unclosed fence
+- `_is_eligible`: empty meta, `enabled: false`, `disable-model-invocation`, `always: true` bypasses binary, missing binary, present binary, missing env var, present env var, OS mismatch, OS match, empty OS list
+- `scan_skills`: empty dir, no dir, `_template` skipped, valid skill, missing SKILL.md, no frontmatter (included), `disable-model-invocation` excluded, multiple skills, oversized file
+- `format_skills_for_prompt`: empty list, single skill, 150-skill cap, 30k-char budget, home-dir path compression
+- `build_skill_section`: mandatory header, skill present, empty skills valid, constraint text
+
+---
+
+### Renamed — `agent-design/prompt_compaction.py` → `agent-design/memory_compaction.py`
+
+Renamed for clarity — the module compacts the agent's *memory* (message history), not the prompt itself. Test file renamed accordingly.
+
+**Deleted:** `agent-design/prompt_compaction.py`, `agent-design/tests/test_prompt_compaction.py`
+**Added:** `agent-design/memory_compaction.py`, `agent-design/tests/test_memory_compaction.py`
+
+No functional changes — only the filenames changed.
+
+---
+
+### Added — `agent-design/memory_compaction.py` (rolling-window context compaction)
 
 Implements automatic context compaction for the agent loop. When the message history crosses a configurable token threshold, the full history is summarised by an external model (GPT-5.2) and the context is rebuilt as `[compacted_state, *bridge?, *tail]`.
 
-**Core file:** `agent-design/prompt_compaction.py`
+**Core file:** `agent-design/memory_compaction.py`
 
 **Public API:**
 - `maybe_compact(messages, *, api_key, level, config)` — main entry point; checks threshold, runs compaction if needed, returns `(new_messages, CompactionResult)`
@@ -46,7 +113,7 @@ Implements automatic context compaction for the agent loop. When the message his
 
 **New dependencies** (`requirements.txt`): `openai`, `tiktoken`
 
-**Test suite:** `agent-design/tests/test_prompt_compaction.py` — 19 cases, all checks passing
+**Test suite:** `agent-design/tests/test_memory_compaction.py` — 19 cases, all checks passing
 - `_extract_text`: plain string, list with text + tool_use + tool_result blocks
 - `_serialize_history`: string messages, tool_use/tool_result rendering
 - `estimate_tokens`: string messages, list messages, tiktoken-absent char fallback

@@ -1,10 +1,10 @@
 """
-test_prompt_compaction.py — test suite for prompt_compaction.py
+test_memory_compaction.py — test suite for memory_compaction.py
 
 Run from the workspace root:
-    python -m agent_design.test_prompt_compaction
+    python -m agent_design.test_memory_compaction
 or directly:
-    python agent-design/test_prompt_compaction.py
+    python agent-design/test_memory_compaction.py
 """
 
 from __future__ import annotations
@@ -14,16 +14,16 @@ import types
 from unittest.mock import MagicMock, patch
 
 # agent-design/ has a hyphen so it is not a valid Python package name.
-# Load prompt_compaction.py directly via importlib.
+# Load memory_compaction.py directly via importlib.
 import importlib.util
 import pathlib
 
 _here = pathlib.Path(__file__).resolve().parent.parent  # agent-design/tests/ -> agent-design/
 _spec = importlib.util.spec_from_file_location(
-    "prompt_compaction", _here / "prompt_compaction.py"
+    "memory_compaction", _here / "memory_compaction.py"
 )
 _mod = importlib.util.module_from_spec(_spec)  # type: ignore[arg-type]
-sys.modules["prompt_compaction"] = _mod
+sys.modules["memory_compaction"] = _mod
 _spec.loader.exec_module(_mod)  # type: ignore[union-attr]
 
 CompactionConfig = _mod.CompactionConfig
@@ -349,7 +349,7 @@ def test_computer_level_prompt() -> None:
 
 def run_all() -> None:
     print("\n" + "=" * 60)
-    print("  prompt_compaction — test suite")
+    print("  memory_compaction — test suite")
     print("=" * 60)
 
     test_extract_text_string()
