@@ -5,21 +5,27 @@
 # No third-party deps — stdlib only.
 
 # ── comm_channels / ping_user ─────────────────────────────────────────────────
-# No third-party deps — HTTP via stdlib urllib.request.
-# .env parsing is handled manually in telegram/config.py (no python-dotenv needed).
+# No third-party deps for HTTP — stdlib urllib.request.
 
-# ── memory / remember tool ─────────────────────────────────────────────────────
-chromadb==0.4.24            
-onnxruntime==1.24.3  
-numpy<2.0       
+# ── shared env loading ────────────────────────────────────────────────────────
+python-dotenv               # tools/env_loader.py — load .env into os.environ
+
+# ── memory / remember tool ────────────────────────────────────────────────────
+chromadb==0.4.24
+onnxruntime==1.24.3
+numpy<2.0
+
+# ── snapshot tool ─────────────────────────────────────────────────────────────
+Pillow                      # ImageGrab for desktop screenshots; also used by image_gen
+
+# ── image_gen tool ────────────────────────────────────────────────────────────
+google-genai                # Gemini image generation SDK
 
 # ── Future tools (add as implemented) ─────────────────────────────────────────
 # openai                  # LLM API
 # anthropic               # Claude API
 # slack-sdk               # Slack comm-channel adapter
 # discord.py              # Discord comm-channel adapter
-# google-genai            # Gemini (browser/vision agent)
 # pyautogui               # browser agent desktop control
-# pillow                  # screenshots (send_user_media)
 # pydantic                # schema validation
 # nanoid                  # session ID generation (or use uuid, already stdlib)

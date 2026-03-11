@@ -12,9 +12,9 @@ Tier 1 — Non-negotiable core
 Tier 2 — Makes it actually useful
 >process(action, session_id) Manage long-running background processes from exec
 >send_user_media(path) Return files, images, output to user
-snapshot() Desktop screenshot for visual context
+>snapshot() Desktop screenshot for visual context
+>tts() via inworld
+>image_gen() to gemini use gemini-3.1-flash-image-preview and 512px
 spawn_subagent(prompt, agent) Delegate to browser agent or Codex — this is the delegation primitive
-image_gen() to gemini
-tts() via inworld
 schedule_agent(time, task) fires and  agent for task designated to run at some other time
 

@@ -6,6 +6,74 @@ All notable changes to Crunchy-Neck-Agent are documented here.
 
 ## [Unreleased] — 2026-03-11
 
+### Added — `tools/snapshot`, `tools/tts`, `tools/image_gen`
+
+Three new Tier-2 tools. All follow the standard `tools/<name>/` layout.
+
+#### `tools/snapshot` — desktop screenshot
+
+Captures a screenshot via Pillow's `ImageGrab` and saves it to `.agent/snapshots/`. Optionally returns the image as a base64 string for LLM vision.
+
+- `snapshot_tool.py` — `snapshot_command(params, *, workspace_root, agent_session_id)`
+- `snapshot_types.py` — `SnapshotParams` (`monitor`, `region`, `format`, `include_base64`); `SnapshotResultDone` / `SnapshotResultError`
+- **Parameters:** all optional — `monitor` (default `0` = all screens), `region` (`[x, y, w, h]`), `format` (`png`/`jpeg`, default `png`), `include_base64` (default `true`)
+- **Error codes:** `capture_failed`, `save_failed`, `invalid_region`, `dependency_missing`
+- **Audit events:** `snapshot.done`, `snapshot.error` → `.agent/audit/snapshot-{date}.jsonl`
+- **Test suite:** `tools/snapshot/test_snapshot.py` — 10 tests, 22/22 checks passing
+
+#### `tools/tts` — text-to-speech via Inworld
+
+Synthesises speech using the Inworld TTS API (`POST https://api.inworld.ai/tts/v1/voice`) and saves the result as an MP3. No new dependencies — uses stdlib `urllib.request`, `base64`, `json`.
+
+- `tts_tool.py` — `tts_command(params, *, workspace_root, agent_session_id)`
+- `tts_types.py` — `TtsParams` (`text`, `voice_id`, `model_id`); `TtsResultDone` / `TtsResultError`
+- **Parameters:** `text` (required), `voice_id` (default `"Ashley"`), `model_id` (default `"inworld-tts-1.5-max"`)
+- **Auth:** `Authorization: Basic {INWORLD_API_KEY}` — key read from env or `.env` file
+- **Error codes:** `not_configured`, `api_error`, `save_failed`
+- **Audit events:** `tts.done`, `tts.error` → `.agent/audit/tts-{date}.jsonl`
+- **Test suite:** `tools/tts/test_tts.py` — 7 tests, 24/24 checks passing
+
+#### `tools/image_gen` — image generation via Gemini
+
+Generates an image from a text prompt using the `google-genai` SDK (model `gemini-3.1-flash-image-preview`) and saves it as a PNG.
+
+- `image_gen_tool.py` — `image_gen_command(params, *, workspace_root, agent_session_id)`
+- `image_gen_types.py` — `ImageGenParams` (`prompt`, `size`, `aspect_ratio`); `ImageGenResultDone` / `ImageGenResultError`
+- **Parameters:** `prompt` (required), `size` (default `512`), `aspect_ratio` (enum, default `"1:1"`)
+- **Auth:** `GEMINI_API_KEY` read from env or `.env` file
+- **Error codes:** `not_configured`, `api_error`, `save_failed`, `no_image_in_response`, `dependency_missing`
+- **Audit events:** `image_gen.done`, `image_gen.error` → `.agent/audit/image_gen-{date}.jsonl`
+- **Test suite:** `tools/image_gen/test_image_gen.py` — 10 tests, 28/28 checks passing
+
+**New env vars** (documented in `.env.example`): `INWORLD_API_KEY`, `GEMINI_API_KEY`
+
+**New dependencies** (`requirements.txt`): `Pillow`, `google-genai`
+
+---
+
+### Refactored — remove `env_loader.py` and per-tool `config.py` files
+
+The intermediate `tools/env_loader.py` wrapper and the `config.py` files in `tools/tts/` and `tools/image_gen/` were unnecessary indirection. Replaced with direct `load_dotenv` + `os.getenv` calls inlined in each tool function.
+
+**Deleted:** `tools/env_loader.py`, `tools/tts/config.py`, `tools/image_gen/config.py`
+
+**Updated:** `comm_channels/telegram/config.py` — now imports `load_dotenv` directly instead of going through `env_loader`
+
+**New dependency** (`requirements.txt`): `python-dotenv`
+
+---
+
+### Updated — `tools/__init__.py` (11 tools)
+
+`ALL_TOOLS` now exposes all eleven tools:
+
+```python
+from tools import ALL_TOOLS  # len == 11
+# exec, process, read, write, edit, remember, ping, send_media, snapshot, tts, image_gen
+```
+
+---
+
 ### Added — `tools/send_media` (`send_user_media` tool)
 
 New tool for sending media files (photo, document, video, audio) to the user. Reads from the local workspace and uploads via the configured medium.
