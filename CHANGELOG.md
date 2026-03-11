@@ -4,6 +4,80 @@ All notable changes to Crunchy-Neck-Agent are documented here.
 
 ---
 
+## [Unreleased] — 2026-03-12
+
+### Added — `crunchy-neck-agent.py` + `agent_utils/` (main agent loop)
+
+The full agent is now wired together and runnable.
+
+**Entry point:** `python crunchy-neck-agent.py [--medium terminal|telegram] [--workspace /path]`
+
+**Session model:** each session = one user message in → tool-call loop → final reply → wrapup. Message history persists across sessions for the process lifetime.
+
+**`agent_utils/` package (new):**
+
+- `openai_helpers.py` — `make_client(api_key)` + `chat_complete(client, *, messages, tools, model)`. Single call-site that enforces `reasoning_effort="low"` on every OpenAI request.
+- `tool_schemas.py` — wraps all 11 `TOOL_DEFINITION` dicts from `tools/__init__.py` in the OpenAI function-calling envelope `{"type":"function","function":...}`. No schema duplication — canonical source remains each tool's `__init__.py`.
+- `tool_dispatcher.py` — `dispatch(tool_name, arguments_json, *, workspace_root, agent_session_id, medium) → str`. 11-branch dispatch table; filters args to valid dataclass fields; injects session `medium` into `ping_user` / `send_user_media` calls when model omits it; returns JSON string on success or `{"error":"..."}` on any exception.
+- `system_prompt.py` — `build_system_prompt(*, workspace_root, medium, model)`. Assembles the frozen system prompt from: `build_identity_section()` (sections 1+7+14), inline tooling/style/safety/CLI sections, `build_skill_section()` (section 6), runtime metadata (model/date/OS/medium), messaging protocol, and `PERSONALITY.md` verbatim.
+
+**Main loop (`crunchy-neck-agent.py`):**
+- Outer loop: `_await_user_message()` → session → wrapup → repeat
+- `_await_user_message`: terminal uses `input()`; Telegram long-polls via `ping_command(type="query:msg", timeout=3600)`, looping on timeout
+- `_run_agent_turn`: compact → OpenAI call → dispatch tool calls → repeat; max 40 rounds; API errors appended as sentinel messages, never fatal
+- Wrapup only fires when at least one tool was called — pure chat turns are skipped
+
+**Live update pipeline (no AI, string-only):**
+Every tool call produces two update pings, and any model thinking text produces one:
+1. **Before tool**: `[tool_name] {args[:120]}` → `ping_user(type="update", title="tool")`
+2. **After tool**: `[tool_name] → {first 3 lines of result}` → `ping_user(type="update", title="result")`
+3. **Model thinking text**: first 2-3 non-empty lines → `ping_user(type="update", title="thinking")`
+
+All updates use `edit_last_update=True` (in-place on Telegram), wrapped in `try/except`.
+
+---
+
+### Changed — `agent_design/memory_compaction.py` + `agent_design/session_wrapup_log.py`
+
+- `max_tokens` → `max_completion_tokens` (gpt-5.2 rejects the old param name)
+- `reasoning_effort="low"` added to both OpenAI calls
+- `_extract_text()` now handles `None` content (assistant messages with only tool calls have `content=None`; previous code raised `TypeError: 'NoneType' object is not iterable`)
+
+---
+
+### Changed — `agent-design/` → `agent_design/` (directory rename)
+
+Renamed to remove the hyphen so the package is importable as `agent_design` without `importlib` workarounds.
+
+---
+
+### Added — `OPENAI_API_KEY` to `.env.example`
+
+Documented as required; used by the main agent model, compaction, and session wrapup. All three calls use `gpt-5.2` with `reasoning_effort="low"`.
+
+---
+
+### Added — `skills/coding_agent/SKILL.md` + `skills/gog/SKILL.md`
+
+Two skills adapted from OpenClaw for Crunchy-Neck-Agent.
+
+**`coding_agent`** — rewrote from OpenClaw format:
+- Stripped to **Codex only** (removed Claude Code, Pi, OpenCode sections)
+- Frontmatter updated to our format: `metadata.requires.anyBins: ["codex"]`
+- Tool syntax adapted: `bash pty:true workdir:X command:...` → `exec(command=..., cwd=X, intent=..., background=True)`; `pty` dropped (not in our exec tool; `codex exec` is non-interactive)
+- `openclaw system event` completion notifications → `ping_user(type="update")`
+- All OpenClaw-specific path warnings removed
+- Core patterns kept: `codex exec` one-shots, `--full-auto`/`--yolo` flags, git-init scratch trick, PR review (clone/worktree), parallel worktree batch fixing, process monitoring
+
+**`gog`** — frontmatter only:
+- `metadata.openclaw.requires.bins: ["gog"]` → `metadata.requires.anyBins: ["gog"]` (our eligibility format)
+- Removed `homepage` field and openclaw install instructions
+- Body (all `gog` CLI commands) unchanged
+
+Both skills are now correctly picked up by `skill_use.py` eligibility filtering — appear in the system prompt only when the respective binary is on PATH.
+
+---
+
 ## [Unreleased] — 2026-03-11
 
 ### Added — `agent-design/identity.py` + `agent-design/session_wrapup_log.py` + `PERSONALITY.md` (agent identity, memory lifecycle, personality)

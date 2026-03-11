@@ -192,8 +192,10 @@ _COMPACTION_PROMPTS: dict[str, str] = {
 
 # ── Private helpers ────────────────────────────────────────────────────────────
 
-def _extract_text(content: str | list) -> str:
-    """Flatten Anthropic-style message content to a plain string."""
+def _extract_text(content: str | list | None) -> str:
+    """Flatten message content to a plain string."""
+    if content is None:
+        return ""
     if isinstance(content, str):
         return content
     parts: list[str] = []
@@ -321,7 +323,8 @@ def run_compaction(
     try:
         response = client.chat.completions.create(
             model=config.model,
-            max_tokens=config.compaction_max_tokens,
+            max_completion_tokens=config.compaction_max_tokens,
+            reasoning_effort="low",
             messages=[
                 {"role": "system", "content": compaction_prompt},
                 {

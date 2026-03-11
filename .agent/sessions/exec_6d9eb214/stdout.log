@@ -1,0 +1,32 @@
+ Volume in drive C has no label.
+ Volume Serial Number is 4605-B4D2
+
+ Directory of C:\Users\SHREYASH KUMAR SINGH\Desktop\Crunchy-Neck-Agent
+
+12-03-2026  01:07    <DIR>          .
+09-03-2026  00:21    <DIR>          ..
+12-03-2026  01:08    <DIR>          .agent
+12-03-2026  01:04             2,061 .env
+12-03-2026  01:03             1,672 .env.example
+11-03-2026  09:31                33 .gitignore
+11-03-2026  20:52    <DIR>          .pytest_cache
+11-03-2026  09:18    <DIR>          .venv
+09-03-2026  12:02                98 Additional.md
+12-03-2026  01:07    <DIR>          agent_design
+12-03-2026  01:05    <DIR>          agent_utils
+10-03-2026  02:18            15,654 Browser-Agent-Build-Plan.md
+12-03-2026  00:22            39,583 CHANGELOG.md
+11-03-2026  09:47    <DIR>          comm_channels
+11-03-2026  10:35            15,463 Core-Agent-Design-And-Prompt.md
+12-03-2026  01:02            14,940 crunchy-neck-agent.py
+10-03-2026  23:06    <DIR>          memory
+12-03-2026  01:06               587 MEMORY.md
+11-03-2026  20:32             2,107 Notes.md
+12-03-2026  00:21             1,532 PERSONALITY.md
+11-03-2026  20:51             2,806 requirements.txt
+12-03-2026  00:42    <DIR>          skills
+11-03-2026  10:23    <DIR>          tools
+11-03-2026  10:26             1,074 Tools-To-Add.md
+12-03-2026  01:07               150 USER.md
+              14 File(s)         97,760 bytes
+              11 Dir(s)  65,901,264,896 bytes free

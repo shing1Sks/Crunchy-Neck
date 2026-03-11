@@ -423,7 +423,8 @@ def run_session_wrapup_log(
         client = openai.OpenAI(api_key=api_key)
         response = client.chat.completions.create(
             model=cfg.model,
-            max_tokens=cfg.max_tokens,
+            max_completion_tokens=cfg.max_tokens,
+            reasoning_effort="low",
             messages=[
                 {"role": "system", "content": "You are a precise session summariser. Follow the output format exactly."},
                 {"role": "user",   "content": prompt},
