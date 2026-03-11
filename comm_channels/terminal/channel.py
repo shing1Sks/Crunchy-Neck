@@ -1,9 +1,10 @@
-"""Terminal medium for ping_user.
+"""Terminal medium for ping_user and send_user_media.
 
 Delivers all message types via stdout (print) and stdin (input).
 No network calls; works without any configuration.
 """
 from __future__ import annotations
+from typing import TYPE_CHECKING
 
 from ..ping_types import (
     PingParams,
@@ -18,6 +19,9 @@ from ..templates import (
     render_terminal_query_msg,
     render_terminal_update,
 )
+
+if TYPE_CHECKING:
+    from tools.send_media.send_media_types import SendMediaParams, SendMediaResult
 
 
 def terminal_send(params: PingParams) -> PingResult:
@@ -69,3 +73,13 @@ def terminal_send(params: PingParams) -> PingResult:
         error_code="invalid_params",
         detail=f"Unknown type: {params.type!r}",
     )
+
+
+def terminal_send_media(params: "SendMediaParams") -> "SendMediaResult":
+    """Print media path and caption to stdout (terminal cannot display media files)."""
+    from tools.send_media.send_media_types import SendMediaResultSent
+
+    label = params.media_type.upper()
+    caption_part = f" \u2014 {params.caption}" if params.caption else ""
+    print(f"[MEDIA:{label}] {params.path}{caption_part}")
+    return SendMediaResultSent(message_id=None)

@@ -5,8 +5,15 @@ from .read import read_command, ReadParams, TOOL_DEFINITION as READ_TOOL
 from .write import write_command, WriteParams, TOOL_DEFINITION as WRITE_TOOL
 from .edit import edit_command, EditParams, TOOL_DEFINITION as EDIT_TOOL
 from .remember import remember_command, RememberParams, TOOL_DEFINITION as REMEMBER_TOOL
+from .ping import ping_command, PingParams, TOOL_DEFINITION as PING_TOOL
+from .send_media import send_media_command, SendMediaParams, TOOL_DEFINITION as SEND_MEDIA_TOOL
 
-ALL_TOOLS = [EXEC_TOOL, PROCESS_TOOL, READ_TOOL, WRITE_TOOL, EDIT_TOOL, REMEMBER_TOOL]
+ALL_TOOLS = [
+    EXEC_TOOL, PROCESS_TOOL, READ_TOOL, WRITE_TOOL, EDIT_TOOL,
+    REMEMBER_TOOL,
+    PING_TOOL,
+    SEND_MEDIA_TOOL,
+]
 
 __all__ = [
     "exec_command", "ExecParams", "EXEC_TOOL",
@@ -15,5 +22,7 @@ __all__ = [
     "write_command", "WriteParams", "WRITE_TOOL",
     "edit_command", "EditParams", "EDIT_TOOL",
     "remember_command", "RememberParams", "REMEMBER_TOOL",
+    "ping_command", "PingParams", "PING_TOOL",
+    "send_media_command", "SendMediaParams", "SEND_MEDIA_TOOL",
     "ALL_TOOLS",
 ]

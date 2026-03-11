@@ -4,7 +4,71 @@ All notable changes to Crunchy-Neck-Agent are documented here.
 
 ---
 
-## [Unreleased] — 2026-03-10
+## [Unreleased] — 2026-03-11
+
+### Added — `tools/send_media` (`send_user_media` tool)
+
+New tool for sending media files (photo, document, video, audio) to the user. Reads from the local workspace and uploads via the configured medium.
+
+**Core files:**
+- `tools/send_media/send_media_tool.py` — `send_media_command(params, *, workspace_root, agent_session_id)`; resolves and safety-checks path via `file_safety.resolve_path()`, dispatches to medium, audits outcome
+- `tools/send_media/send_media_types.py` — `SendMediaParams` dataclass; discriminated-union results (`SendMediaResultSent`, `SendMediaResultError`)
+- `tools/send_media/__init__.py` — `TOOL_DEFINITION` JSON schema for LLM function calling
+
+**Backend additions (`comm_channels/`):**
+- `telegram/client.py` — new `upload_media(token, method, chat_id, field_name, file_bytes, filename, *, caption, parse_mode, http_timeout)` — builds `multipart/form-data` body from scratch using stdlib only (`mimetypes`, `uuid`, `urllib.request`); no external dependencies
+- `telegram/sender.py` — new `send_media(params, cfg, resolved_path)` — maps `media_type → (API method, field name)`, reads file bytes, escapes caption via `escape_mdv2()`, calls `upload_media()`
+- `terminal/channel.py` — new `terminal_send_media(params)` — prints `[MEDIA:TYPE] path — caption` to stdout
+
+**Parameters:** `path`, `media_type` (required: `photo`/`document`/`video`/`audio`); `caption`, `medium` (default `telegram`)
+
+**Media type → Telegram API mapping:**
+| media_type | API method | field name |
+|---|---|---|
+| `photo` | `sendPhoto` | `photo` |
+| `document` | `sendDocument` | `document` |
+| `video` | `sendVideo` | `video` |
+| `audio` | `sendAudio` | `audio` |
+
+**Return variants** (discriminated on `status`):
+- `sent` — `message_id`
+- `error` — `error_code`, `detail`
+
+**Error codes:** `not_configured`, `file_not_found`, `file_blocked`, `send_failed`, `invalid_params`
+
+**Audit events:** `media.file_error`, `media.done` (written to `.agent/audit/ping-{date}.jsonl`)
+
+**Test suite:** `tools/send_media/test_send_media.py` — 13 cases, 32 checks, 32/32 passing
+- File not found, blocked path (`.env`), terminal photo (output format), terminal document with caption, terminal no caption, Telegram photo/document/video/audio correct method + field, caption MarkdownV2-escaped, not_configured, upload failure → send_failed, audit event written
+
+---
+
+### Refactored — `ping_user` promoted to `tools/ping/`
+
+`comm_channels/ping_tool.py` (the tool entry point) moved into the standard `tools/<name>/` layout. `comm_channels/` is now a pure backend implementation package.
+
+**New files:**
+- `tools/ping/ping_tool.py` — `ping_command()` (renamed from `ping_user`); all backend imports continue to point at `comm_channels.*`
+- `tools/ping/__init__.py` — `TOOL_DEFINITION` + exports (schema moved from `comm_channels/__init__.py`)
+- `tools/ping/test_ping.py` — all 24 tests moved here; imports updated to `ping_command` + absolute `comm_channels.*` paths
+
+**Modified files:**
+- `comm_channels/__init__.py` — `TOOL_DEFINITION` removed; package is now backend-only
+- `comm_channels/test_ping.py` — replaced with a one-line redirect comment pointing to `tools/ping/test_ping.py`
+- `tools/__init__.py` — `PING_TOOL` and `SEND_MEDIA_TOOL` added; `ALL_TOOLS` now has 8 entries
+
+---
+
+### Updated — `tools/__init__.py`
+
+Now exposes all eight tools at the package root:
+
+```python
+from tools import ALL_TOOLS  # list of all 8 TOOL_DEFINITION dicts
+# ['exec', 'process', 'read', 'write', 'edit', 'remember', 'ping_user', 'send_user_media']
+```
+
+---
 
 ### Added — `comm_channels/ping_user` (user communication layer)
 
@@ -265,9 +329,9 @@ Single shared module imported by all three file-op tools.
 
 ---
 
-### Updated — `tools/__init__.py`
+### Updated — `tools/__init__.py` (initial — 6 tools)
 
-Now exposes all six tools at the package root:
+Exposed the first six tools at the package root:
 
 ```python
 from tools import ALL_TOOLS  # list of all 6 TOOL_DEFINITION dicts

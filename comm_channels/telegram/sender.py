@@ -8,12 +8,16 @@ from __future__ import annotations
 import time
 from typing import Any
 
+from pathlib import Path
+from typing import TYPE_CHECKING
+
 from .client import (
     TelegramAPIError,
     answer_callback_query,
     edit_message_text,
     get_updates,
     send_message,
+    upload_media,
 )
 from .config import TelegramConfig
 from .._state import load_state, save_state
@@ -25,11 +29,15 @@ from ..ping_types import (
     PingResultSent,
 )
 from ..templates import (
+    escape_mdv2,
     render_telegram_chat,
     render_telegram_query_msg,
     render_telegram_query_options,
     render_telegram_update,
 )
+
+if TYPE_CHECKING:
+    from tools.send_media.send_media_types import SendMediaParams, SendMediaResult
 
 
 # ─── update ───────────────────────────────────────────────────────────────────
@@ -202,3 +210,47 @@ def _build_inline_keyboard(options: list[str]) -> dict[str, Any]:
     """Each option gets its own row (single-column layout for clarity)."""
     rows = [[{"text": opt, "callback_data": opt}] for opt in options]
     return {"inline_keyboard": rows}
+
+
+# ─── Media ────────────────────────────────────────────────────────────────────
+
+# Maps media_type → (API method name, multipart field name)
+_MEDIA_METHOD: dict[str, tuple[str, str]] = {
+    "photo":    ("sendPhoto",    "photo"),
+    "document": ("sendDocument", "document"),
+    "video":    ("sendVideo",    "video"),
+    "audio":    ("sendAudio",    "audio"),
+}
+
+
+def send_media(
+    params: "SendMediaParams",
+    cfg: TelegramConfig,
+    resolved_path: Path,
+) -> "SendMediaResult":
+    """Upload a local file to the configured Telegram chat."""
+    from tools.send_media.send_media_types import SendMediaResultError, SendMediaResultSent
+
+    method, field_name = _MEDIA_METHOD[params.media_type]
+
+    try:
+        file_bytes = resolved_path.read_bytes()
+    except OSError as exc:
+        return SendMediaResultError(error_code="file_not_found", detail=str(exc))
+
+    escaped_caption = escape_mdv2(params.caption) if params.caption else None
+
+    try:
+        msg = upload_media(
+            cfg.bot_token,
+            method,
+            cfg.chat_id,
+            field_name,
+            file_bytes,
+            resolved_path.name,
+            caption=escaped_caption,
+        )
+    except TelegramAPIError as exc:
+        return SendMediaResultError(error_code="send_failed", detail=str(exc))
+
+    return SendMediaResultSent(message_id=msg["message_id"])

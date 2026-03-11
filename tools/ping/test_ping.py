@@ -1,8 +1,8 @@
 """
-test_ping.py -- 24 test scenarios for the ping_user comm-channel tool.
+test_ping.py -- 24 test scenarios for the ping_user tool.
 
 Run from the workspace root:
-    python -m comm_channels.test_ping
+    python -m tools.ping.test_ping
 
 Or directly:
     python test_ping.py
@@ -13,24 +13,24 @@ import json
 import os
 import sys
 
-# Allow `python test_ping.py` from inside comm_channels/
+# Allow `python test_ping.py` from inside tools/ping/
 if __name__ == "__main__" and __package__ is None:
     _workspace = os.path.normpath(
-        os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
+        os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..")
     )
     if _workspace not in sys.path:
         sys.path.insert(0, _workspace)
-    __package__ = "comm_channels"
+    __package__ = "tools.ping"
 
 import tempfile
 import time
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from .ping_tool import ping_user
-from .ping_types import PingParams, PingResultError, PingResultResponse, PingResultSent
-from .templates import escape_mdv2
-from ._state import load_state, save_state
+from .ping_tool import ping_command
+from comm_channels.ping_types import PingParams, PingResultError, PingResultResponse, PingResultSent
+from comm_channels.templates import escape_mdv2
+from comm_channels._state import load_state, save_state
 
 # ---------------------------------------------------------------------------
 # Test harness
@@ -52,7 +52,7 @@ def section(title: str) -> None:
 
 
 def run(params: PingParams, workspace: str) -> object:
-    return ping_user(params, workspace_root=workspace, agent_session_id="test_session")
+    return ping_command(params, workspace_root=workspace, agent_session_id="test_session")
 
 
 # ---------------------------------------------------------------------------
@@ -92,7 +92,7 @@ def _make_http_mock(responses: list[dict]):
             raise RuntimeError(f"Unexpected _call({method})")
         resp = responses.pop(0)
         if not resp.get("ok"):
-            from .telegram.client import TelegramAPIError
+            from comm_channels.telegram.client import TelegramAPIError
             raise TelegramAPIError(method, resp.get("description", "error"), resp.get("error_code", 400))
         return resp["result"]
     return _call_mock

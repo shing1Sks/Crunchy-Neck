@@ -2,11 +2,13 @@
 
 Uses only the Python standard library — no extra dependencies required.
 All public functions raise TelegramAPIError on failure; callers should
-catch it and map it to a PingResultError.
+catch it and map it to a PingResultError / SendMediaResultError.
 """
 from __future__ import annotations
 
 import json
+import mimetypes
+import uuid
 import urllib.error
 import urllib.request
 from typing import Any
@@ -138,3 +140,105 @@ def answer_callback_query(token: str, callback_query_id: str) -> bool:
     """Acknowledge a callback query to dismiss the loading spinner on the button."""
     result = _call(token, "answerCallbackQuery", {"callback_query_id": callback_query_id})
     return bool(result)
+
+
+def upload_media(
+    token: str,
+    method: str,
+    chat_id: str,
+    field_name: str,
+    file_bytes: bytes,
+    filename: str,
+    *,
+    caption: str | None = None,
+    parse_mode: str = "MarkdownV2",
+    http_timeout: int = 60,
+) -> dict[str, Any]:
+    """Upload a file to Telegram using multipart/form-data.
+
+    Args:
+        token:      Bot token.
+        method:     API method, e.g. 'sendPhoto', 'sendDocument'.
+        chat_id:    Destination chat ID.
+        field_name: Multipart field name for the file ('photo', 'document', etc.).
+        file_bytes: Raw bytes of the file to upload.
+        filename:   Original filename (used for Content-Disposition and MIME type).
+        caption:    Optional caption (MarkdownV2-escaped by the caller).
+        parse_mode: Parse mode for the caption.
+        http_timeout: HTTP timeout in seconds (longer than JSON calls due to upload).
+
+    Returns:
+        The Telegram Message dict from result.
+
+    Raises:
+        TelegramAPIError on any failure.
+    """
+    boundary = uuid.uuid4().hex
+    content_type_header = f"multipart/form-data; boundary={boundary}"
+
+    mime_type, _ = mimetypes.guess_type(filename)
+    if mime_type is None:
+        mime_type = "application/octet-stream"
+
+    # ── Build multipart body ──────────────────────────────────────────────────
+    parts: list[bytes] = []
+
+    def _field(name: str, value: str) -> bytes:
+        return (
+            f"--{boundary}\r\n"
+            f'Content-Disposition: form-data; name="{name}"\r\n\r\n'
+            f"{value}\r\n"
+        ).encode("utf-8")
+
+    parts.append(_field("chat_id", chat_id))
+
+    if caption is not None:
+        parts.append(_field("caption", caption))
+        parts.append(_field("parse_mode", parse_mode))
+
+    # File part
+    parts.append(
+        (
+            f"--{boundary}\r\n"
+            f'Content-Disposition: form-data; name="{field_name}"; filename="{filename}"\r\n'
+            f"Content-Type: {mime_type}\r\n\r\n"
+        ).encode("utf-8")
+        + file_bytes
+        + b"\r\n"
+    )
+
+    parts.append(f"--{boundary}--\r\n".encode("utf-8"))
+    body = b"".join(parts)
+
+    url = _BASE.format(token=token, method=method)
+    req = urllib.request.Request(
+        url,
+        data=body,
+        headers={"Content-Type": content_type_header},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=http_timeout) as resp:
+            response_body: dict[str, Any] = json.loads(resp.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        try:
+            response_body = json.loads(exc.read().decode("utf-8"))
+        except Exception:
+            response_body = {}
+        raise TelegramAPIError(
+            method,
+            response_body.get("description", str(exc)),
+            response_body.get("error_code", exc.code),
+        ) from exc
+    except Exception as exc:
+        raise TelegramAPIError(method, str(exc)) from exc
+
+    if not response_body.get("ok"):
+        raise TelegramAPIError(
+            method,
+            response_body.get("description", "Unknown error"),
+            response_body.get("error_code", 0),
+        )
+    result = response_body["result"]
+    assert isinstance(result, dict)
+    return result
