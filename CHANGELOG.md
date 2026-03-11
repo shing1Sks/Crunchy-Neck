@@ -6,6 +6,60 @@ All notable changes to Crunchy-Neck-Agent are documented here.
 
 ## [Unreleased] — 2026-03-11
 
+### Added — `agent-design/identity.py` + `agent-design/session_wrapup_log.py` + `PERSONALITY.md` (agent identity, memory lifecycle, personality)
+
+Three modules completing the system-prompt foundation for the Crunchy agent.
+
+---
+
+#### `agent-design/identity.py`
+
+Produces Sections 1 + 7 + 14 of the system prompt in a single call.
+
+**Public API:**
+- `build_identity_section(workspace_root, *, agent_name="Crunchy")` → `str` — main entry point; returns the complete identity + memory rules + bootstrap files block
+- `load_user_md(workspace_root)` → `str` — reads `USER.md` in full (32 KB cap); returns `""` if absent
+- `load_memory_md_extract(workspace_root, *, max_sessions=8)` → `str` — capped extract from `MEMORY.md`: Ongoing Threads always in full + last N `### Session:` blocks; returns `""` if absent
+
+**What gets injected:**
+- `## Identity` — "You are Crunchy, a personal autonomous agent…"
+- `## Memory Rules` — when to update USER.md, when NOT to write MEMORY.md, ALWAYS use `remember()`
+- `## User Profile` — full USER.md content (or placeholder prompting agent to create it)
+- `## Recent Session Context` — MEMORY.md capped extract (or placeholder if missing)
+
+**Template files:** `agent-design/templates/USER.md`, `agent-design/templates/MEMORY.md`
+
+**Test suite:** `agent-design/tests/test_identity.py` — 29/29 checks passing
+
+---
+
+#### `agent-design/session_wrapup_log.py`
+
+End-of-session hook. One LLM call → structured session log entry → written to `MEMORY.md`.
+
+**Public API:**
+- `run_session_wrapup_log(messages, *, api_key, workspace_root, today, config)` → `SessionWrapupResult`
+
+**Flow:** serialise history → OpenAI call → parse `### Session:` entry + thread updates (`[ADD]`/`[KEEP]`/`[DONE]`) → prepend entry to `## Session Log` → merge thread updates into `## Ongoing Threads` → atomic write
+
+**Result types:** `SessionWrapupResultDone` (`session_entry`, `threads_updated`, `memory_md_path`) / `SessionWrapupResultError` (`error_code`, `error_message`)
+
+**Error codes:** `EMPTY_HISTORY`, `DEPENDENCY_MISSING`, `API_ERROR`, `WRITE_FAILED`, `INTERNAL`
+
+**Config (`SessionWrapupConfig`):** `model`, `max_tokens`, `max_sessions_in_file` (default 60; overflow auto-compacted into `## Long-term History`)
+
+**Test suite:** `agent-design/tests/test_session_wrapup_log.py` — 39/39 checks passing
+
+---
+
+#### `PERSONALITY.md`
+
+Plain markdown file at the workspace root — just who Crunchy is. No code, no logic. Read and injected into the system prompt at session start alongside the other bootstrap files (USER.md, MEMORY.md).
+
+Character: proactive, joyful, loyal, compassionate, creative, engineering-minded. Tone: casual and direct, "we" framing, enthusiastic when earned, never performs helpfulness.
+
+---
+
 ### Added — `agent-design/skill_use.py` + `skills/_template/SKILL.md` (skill discovery & prompt injection)
 
 Implements the skill selection protocol described in `Model-Skills-Architecture.md`. Produces Section 6 ("Skills") of the system prompt and is the only module the system-prompt builder needs to call.
