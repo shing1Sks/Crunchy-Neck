@@ -6,6 +6,57 @@ All notable changes to Crunchy-Neck-Agent are documented here.
 
 ## [Unreleased] — 2026-03-11
 
+### Added — `agent-design/prompt_compaction.py` (rolling-window context compaction)
+
+Implements automatic context compaction for the agent loop. When the message history crosses a configurable token threshold, the full history is summarised by an external model (GPT-5.2) and the context is rebuilt as `[compacted_state, *bridge?, *tail]`.
+
+**Core file:** `agent-design/prompt_compaction.py`
+
+**Public API:**
+- `maybe_compact(messages, *, api_key, level, config)` — main entry point; checks threshold, runs compaction if needed, returns `(new_messages, CompactionResult)`
+- `should_compact(messages, config)` → `(needs_compact, estimated_tokens, threshold_tokens)` — pure threshold check, no side effects
+- `run_compaction(messages, *, api_key, level, config)` → `str` — calls OpenAI and returns raw compacted state text
+- `apply_compaction(messages, compacted_text, config)` → `list[dict]` — rebuilds the message list; inserts a bridge assistant turn when needed to maintain strict user/assistant alternation
+- `estimate_tokens(messages)` → `int` — token count via tiktoken (`cl100k_base`); falls back to `len(text) // 4` only on encode failure
+
+**Config (`CompactionConfig` dataclass):**
+| field | default | description |
+|---|---|---|
+| `max_context_tokens` | `400_000` | GPT-5.2 context window |
+| `threshold_ratio` | `0.90` | trigger at 90% capacity |
+| `keep_last_n` | `2` | messages retained verbatim after the compacted block |
+| `model` | `"gpt-5.2"` | compaction model |
+| `compaction_max_tokens` | `4096` | max tokens in the compaction response |
+
+**Compaction levels (`CompactionLevel`):**
+- `"orchestrator"` — extracts: original task, current plan, TODO checklist, progress summary, delegations log, critical values, subagent states, errors & dead ends, next step, open questions
+- `"computer"` — extracts: browsing objective, current location, session state, critical values, navigation history (compressed), data collected, errors & dead ends, next action
+
+**Result types (discriminated on `status`):**
+- `CompactionResultSkipped` — threshold not crossed; `estimated_tokens`, `threshold_tokens`
+- `CompactionResultDone` — compaction ran; `estimated_tokens_before`, `messages_before`, `messages_after`, `compacted_text_preview` (first 120 chars)
+- `CompactionResultError` — failure, original list returned; `error_code`, `error_message`
+
+**Error codes:** `API_ERROR`, `DEPENDENCY_MISSING`, `EMPTY_HISTORY`, `INTERNAL`
+
+**Key behaviours:**
+- On any failure `maybe_compact` returns the original `messages` list unchanged — the agent loop is never left without a valid context
+- Turn-alternation fix: if `tail[0].role == "user"`, a minimal `[Context restored from compacted state.]` bridge assistant message is inserted between the compacted block and the tail
+- `estimate_tokens` imports `tiktoken` at module level (`_TIKTOKEN_ENC = tiktoken.get_encoding("cl100k_base")`); char-count fallback is only reached if the encode call itself raises
+
+**New dependencies** (`requirements.txt`): `openai`, `tiktoken`
+
+**Test suite:** `agent-design/tests/test_prompt_compaction.py` — 19 cases, all checks passing
+- `_extract_text`: plain string, list with text + tool_use + tool_result blocks
+- `_serialize_history`: string messages, tool_use/tool_result rendering
+- `estimate_tokens`: string messages, list messages, tiktoken-absent char fallback
+- `should_compact`: below threshold, above threshold
+- `apply_compaction`: basic keep_last_n=2, tail starts with assistant (no bridge), fewer messages than keep_last_n, marker prefix
+- `maybe_compact`: empty history, skipped, done (mocked API), DEPENDENCY_MISSING, API_ERROR
+- `run_compaction`: `level="computer"` uses computer system prompt
+
+---
+
 ### Added — `tools/snapshot`, `tools/tts`, `tools/image_gen`
 
 Three new Tier-2 tools. All follow the standard `tools/<name>/` layout.

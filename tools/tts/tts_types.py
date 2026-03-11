@@ -13,8 +13,8 @@ class TtsParams:
     voice_id: str = "Ashley"
     """Inworld voice name. Default: 'Ashley'."""
 
-    model_id: str = "inworld-tts-1.5-max"
-    """Inworld TTS model ID. Default: 'inworld-tts-1.5-max'."""
+    model_id: str = "inworld-tts-1.5-mini"
+    """Inworld TTS model ID. Default: 'inworld-tts-1.5-mini'."""
 
 
 # ─── Result types ─────────────────────────────────────────────────────────────

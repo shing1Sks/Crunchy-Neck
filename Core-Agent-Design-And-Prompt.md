@@ -80,7 +80,6 @@ Workspace root
   ├─ IDENTITY.md    ← role definition
   ├─ USER.md        ← user preferences and facts
   ├─ TOOLS.md       ← guidance for external tools specific to this workspace
-  ├─ HEARTBEAT.md   ← polling/alerting logic
   └─ MEMORY.md      ← persistent memory from prior sessions
 All of these get injected into the system prompt, in that order, under "Project Context." They're the workspace-level personality layer.
 
