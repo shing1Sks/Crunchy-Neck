@@ -1,458 +1,355 @@
-Gemini Computer Use Agent — Build Plan
+# Browser / Computer Agent — Build Plan
 
-How It Works
-Parent agent calls: run_computer_task("post on LinkedIn about X")
-        ↓
-ComputerAgent starts
-        ↓
-Takes screenshot of current screen
-        ↓
-Sends screenshot + task to Gemini computer use model
-        ↓
-Gemini returns action: { type: "click", x: 450, y: 320 }
-        ↓
-PyAutoGUI executes the action
-        ↓
-New screenshot taken
-        ↓
-Loop until Gemini signals DONE or calls ping_user
+## Context
+The main Crunchy Neck agent delegates browser and desktop tasks to this specialized sub-agent that controls a real screen. The parent agent calls a `browse` tool with a task string and mode, and gets back a structured result. Built on **GPT-5.4** with OpenAI's **Responses API** `computer` tool (native CUA), with a strict **260k token cap** to stay below the 272k pricing-doubling threshold. Supports two modes: **browser** (Chrome with persistent profile) and **desktop** (full Windows desktop control).
 
-Folder Structure
-computer-agent/
-├── main.py                  # Dev/test entry point
-├── .env
-├── requirements.txt
-│
-├── core/
-│   ├── agent.py             # Main loop — the brain
-│   ├── models.py            # Pydantic schemas
-│   └── prompts.py           # System prompt
-│
-├── executor/
-│   ├── __init__.py
-│   ├── screenshot.py        # Screen capture
-│   ├── actions.py           # PyAutoGUI action executor
-│   └── chrome.py            # Chrome launcher with profile
-│
-└── comms/
-    └── user.py              # ping_user — blocks for human input
+> **Token pricing note:** For GPT-5.4 (1.05M context window), prompts with >272K input tokens are priced at 2× input and 1.5× output for the full session. We compact at 255k to stay safely below this.
 
-Requirements
-google-genai
+---
+
+## How It Works
+
+```
+Parent agent calls: browse("post on LinkedIn about X", mode="browser")
+    ↓
+ComputerAgent starts, takes screenshot
+    ↓
+Sends screenshot + task to GPT-5.4 via Responses API (computer tool)
+    ↓
+GPT-5.4 returns computer_call: { action: "click", coordinate: [450, 320] }
+    ↓
+PyAutoGUI executes the action, waits 2s for screen to settle
+    ↓
+New screenshot taken, appended as computer_call_output
+    ↓
+Loop until model signals DONE / NEED_INPUT / FAILED (or 60 turns max)
+```
+
+---
+
+## Folder Structure
+
+```
+computer-agent/               ← new folder in project root
+├── __init__.py               # exports run_computer_task()
+├── agent.py                  # main loop: Responses API + CUA actions
+├── browser.py                # Chrome launcher with persistent profile
+├── screenshot.py             # PIL ImageGrab → base64 PNG (full screen)
+├── actions.py                # PyAutoGUI executor for each action type
+├── prompts.py                # system prompts (browser + desktop variants)
+├── models.py                 # AgentResult dataclass + ComputerMode type
+└── compaction.py             # 260k-cap token compaction for Responses API format
+```
+
+Also adds a new `tools/browse/` tool that the parent agent calls.
+
+---
+
+## Mode: browser vs desktop
+
+| Feature | `browser` mode | `desktop` mode |
+|---|---|---|
+| Chrome launched | Yes (persistent profile) | No (desktop as-is) |
+| CUA `environment` | `"browser"` | `"desktop"` |
+| Screenshot scope | Full screen (Chrome maximized) | Full screen |
+| System prompt | Browser-specific (URL bar, tabs, login flow) | Desktop-specific (apps, Start menu, taskbar, file system) |
+| Login handling | NEED_INPUT if not logged in | N/A |
+| Session persistence | Chrome user-data-dir | None needed |
+
+Both modes share the same action executor, screenshot logic, compaction, and communication layer.
+
+---
+
+## Requirements
+
+```
 pyautogui
 pillow
-pydantic
-pydantic-settings
-python-dotenv
+httpx          # Chrome readiness polling
+openai         # Responses API (existing dep)
+python-dotenv  # existing dep
+```
 
-Phase 1 — Screenshot + Action Executor
-executor/screenshot.py
-Captures the full screen and returns it as base64 for Gemini.
-pythonimport pyautogui
-import base64
-from io import BytesIO
-from PIL import Image
+No new API keys — uses existing `OPENAI_API_KEY`. Optional: `CHROME_PATH` env var to override Chrome binary location.
 
-def take_screenshot() -> tuple[str, tuple[int, int]]:
-    """
-    Returns (base64_image, (width, height))
-    Resizes to max 1366x768 to keep token costs down.
-    """
-    screenshot = pyautogui.screenshot()
-    
-    # Resize if too large
-    max_w, max_h = 1366, 768
-    w, h = screenshot.size
-    if w > max_w or h > max_h:
-        ratio = min(max_w / w, max_h / h)
-        screenshot = screenshot.resize(
-            (int(w * ratio), int(h * ratio)), 
-            Image.LANCZOS
-        )
-    
-    buffer = BytesIO()
-    screenshot.save(buffer, format="PNG")
-    b64 = base64.b64encode(buffer.getvalue()).decode()
-    return b64, screenshot.size
-executor/actions.py
-Receives Gemini's action output and executes it via PyAutoGUI.
-pythonimport pyautogui
-import asyncio
-import time
+---
 
-# Safety: PyAutoGUI failsafe — move mouse to corner to abort
-pyautogui.FAILSAFE = True
-pyautogui.PAUSE = 0.3  # small pause between actions
+## Phase 1 — Core Modules
 
-async def execute_action(action: dict) -> str:
-    """
-    Executes a single Gemini computer use action.
-    Returns a string result description.
-    """
-    action_type = action.get("action")
-    
-    if action_type == "screenshot":
-        # Model is requesting a fresh screenshot — handled by main loop
-        return "screenshot_requested"
+### computer-agent/models.py
+```python
+from typing import Literal
+from dataclasses import dataclass
 
-    elif action_type == "click":
-        x, y = action["coordinate"]
-        button = action.get("button", "left")
-        btn_map = {"left": "left", "right": "right", "middle": "middle"}
-        pyautogui.click(x, y, button=btn_map.get(button, "left"))
-        return f"clicked ({x}, {y}) with {button} button"
+ComputerMode = Literal["browser", "desktop"]
 
-    elif action_type == "double_click":
-        x, y = action["coordinate"]
-        pyautogui.doubleClick(x, y)
-        return f"double-clicked ({x}, {y})"
-
-    elif action_type == "type":
-        text = action.get("text", "")
-        # Small delay for realistic typing
-        pyautogui.write(text, interval=0.04)
-        return f"typed: {text[:50]}{'...' if len(text) > 50 else ''}"
-
-    elif action_type == "key":
-        keys = action.get("key", "")
-        # Handle combos like "ctrl+c", "shift+tab"
-        if "+" in keys:
-            parts = keys.split("+")
-            pyautogui.hotkey(*parts)
-        else:
-            pyautogui.press(keys)
-        return f"pressed key: {keys}"
-
-    elif action_type == "scroll":
-        x, y = action["coordinate"]
-        direction = action.get("direction", "down")
-        amount = action.get("amount", 3)
-        pyautogui.moveTo(x, y)
-        scroll_val = amount if direction == "up" else -amount
-        pyautogui.scroll(scroll_val)
-        return f"scrolled {direction} at ({x}, {y})"
-
-    elif action_type == "move_mouse":
-        x, y = action["coordinate"]
-        pyautogui.moveTo(x, y, duration=0.2)
-        return f"moved mouse to ({x}, {y})"
-
-    elif action_type == "drag":
-        sx, sy = action["startCoordinate"]
-        ex, ey = action["endCoordinate"]
-        pyautogui.drag(sx, sy, ex - sx, ey - sy, duration=0.3)
-        return f"dragged from ({sx},{sy}) to ({ex},{ey})"
-
-    elif action_type == "wait":
-        duration = action.get("duration", 1000) / 1000  # ms → seconds
-        await asyncio.sleep(duration)
-        return f"waited {duration}s"
-
-    else:
-        return f"unknown action: {action_type}"
-
-Phase 2 — Chrome Launcher with Persistent Profile
-executor/chrome.py
-Launches Chrome pointing at a persistent user-data-dir. Login state persists automatically.
-pythonimport subprocess
-import sys
-import time
-import httpx
-from pathlib import Path
-
-CHROME_BINARIES = {
-    "win32":  [
-        r"C:\Program Files\Google\Chrome\Application\chrome.exe",
-        r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
-    ],
-    "darwin": [
-        "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
-    ],
-    "linux":  ["google-chrome", "google-chrome-stable", "chromium-browser"]
-}
-
-def find_chrome() -> str:
-    platform = sys.platform
-    candidates = CHROME_BINARIES.get(platform, [])
-    for c in candidates:
-        if Path(c).exists():
-            return c
-        # Try PATH lookup for linux
-        import shutil
-        found = shutil.which(c)
-        if found:
-            return found
-    raise RuntimeError("Chrome not found. Install Chrome or set CHROME_PATH in .env")
-
-def launch_chrome(profile_name: str = "default", port: int = 9222) -> subprocess.Popen:
-    user_data_dir = Path.home() / ".computer-agent" / "profiles" / profile_name / "user-data"
-    user_data_dir.mkdir(parents=True, exist_ok=True)
-    
-    chrome_path = find_chrome()
-    
-    cmd = [
-        chrome_path,
-        f"--remote-debugging-port={port}",
-        "--remote-debugging-address=127.0.0.1",
-        f"--user-data-dir={user_data_dir}",
-        "--no-first-run",
-        "--no-default-browser-check",
-        "--start-maximized",
-    ]
-    
-    proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    
-    # Wait for Chrome to be ready
-    _wait_for_chrome(port)
-    return proc
-
-def _wait_for_chrome(port: int, timeout: int = 15):
-    deadline = time.time() + timeout
-    while time.time() < deadline:
-        try:
-            r = httpx.get(f"http://127.0.0.1:{port}/json/version", timeout=1)
-            if r.status_code == 200:
-                return
-        except Exception:
-            pass
-        time.sleep(0.2)
-    raise RuntimeError(f"Chrome did not start on port {port} within {timeout}s")
-
-Phase 3 — User Communication
-comms/user.py
-Blocking ask and non-blocking update. In future this routes to Telegram.
-pythonasync def ping_user(msg: str, type: str = "ask") -> str:
-    if type == "update":
-        print(f"\n[AGENT UPDATE] {msg}")
-        return ""
-    elif type == "ask":
-        print(f"\n[AGENT NEEDS INPUT] {msg}")
-        response = input("Your response: ").strip()
-        return response
-
-Phase 4 — System Prompt
-core/prompts.py
-pythonSYSTEM_PROMPT = """
-You are a computer use agent controlling a real desktop via screenshots.
-
-WORKFLOW:
-1. You receive a screenshot of the current screen
-2. You decide the next single action to take
-3. Return exactly one action
-4. You will receive a new screenshot after each action
-5. Repeat until the task is complete
-
-ACTIONS AVAILABLE:
-- screenshot: request a fresh screenshot (use when screen may have changed)
-- click: click at coordinates { coordinate: [x, y], button: "left"|"right"|"middle" }
-- double_click: double-click at coordinates { coordinate: [x, y] }
-- type: type text { text: "..." }
-- key: press key or combo { key: "enter" | "ctrl+c" | "ctrl+v" | ... }
-- scroll: scroll at position { coordinate: [x, y], direction: "up"|"down", amount: 3 }
-- move_mouse: move without clicking { coordinate: [x, y] }
-- wait: pause { duration: 1000 } (milliseconds)
-
-SPECIAL SIGNALS (return as plain text, not as an action):
-- DONE: <result> — task is complete, include what was accomplished
-- NEED_INPUT: <question> — you need the user to do something (login, OTP, etc.)
-- FAILED: <reason> — task cannot be completed
-
-RULES:
-- One action per response
-- After clicking something that triggers navigation, always request a screenshot next
-- For login pages: signal NEED_INPUT asking user to log in, then wait for confirmation
-- For OTP fields: signal NEED_INPUT with the site name, fill the returned code
-- For password fields: always use type action (never key)
-- Never guess coordinates — only act on what you can see in the screenshot
-- If the screen hasn't changed after an action, try a different approach
-"""
-
-Phase 5 — Main Agent Loop
-core/agent.py
-pythonimport google.generativeai as genai
-import json
-import re
-from core.prompts import SYSTEM_PROMPT
-from core.models import AgentResult
-from executor.screenshot import take_screenshot
-from executor.actions import execute_action
-from comms.user import ping_user
-
-class ComputerAgent:
-    def __init__(self, model: str = "gemini-2.0-flash-exp"):
-        self.model = genai.GenerativeModel(
-            model_name=model,
-            system_instruction=SYSTEM_PROMPT
-        )
-        self.max_turns = 50
-
-    async def run(self, task: str) -> AgentResult:
-        print(f"\n[ComputerAgent] Starting task: {task}")
-        
-        history = []
-        
-        for turn in range(self.max_turns):
-            # Take screenshot
-            screenshot_b64, screen_size = take_screenshot()
-            
-            # Build message: task context on turn 1, just screenshot after
-            if turn == 0:
-                user_content = [
-                    {"text": f"Task: {task}\n\nCurrent screen:"},
-                    {"inline_data": {"mime_type": "image/png", "data": screenshot_b64}}
-                ]
-            else:
-                user_content = [
-                    {"inline_data": {"mime_type": "image/png", "data": screenshot_b64}}
-                ]
-            
-            history.append({"role": "user", "parts": user_content})
-            
-            # Call Gemini
-            response = self.model.generate_content(history)
-            reply = response.text.strip()
-            
-            history.append({"role": "model", "parts": [{"text": reply}]})
-            
-            print(f"\n[Turn {turn + 1}] Model: {reply[:200]}")
-            
-            # Parse response
-            result = await self._handle_reply(reply)
-            
-            if result["type"] == "done":
-                return AgentResult(status="done", deliverable=result["value"])
-            
-            elif result["type"] == "failed":
-                return AgentResult(status="failed", reason=result["value"])
-            
-            elif result["type"] == "need_input":
-                # Block and ask user
-                user_response = await ping_user(result["value"], type="ask")
-                # Inject user response as next message
-                history.append({
-                    "role": "user",
-                    "parts": [{"text": f"User response: {user_response}"}]
-                })
-                continue  # Don't take screenshot this turn, let model process
-            
-            elif result["type"] == "action":
-                action_result = await execute_action(result["value"])
-                print(f"[Turn {turn + 1}] Executed: {action_result}")
-                # Small pause for screen to settle
-                import asyncio
-                await asyncio.sleep(0.5)
-                # Loop continues — next turn takes fresh screenshot
-        
-        return AgentResult(status="failed", reason="Max turns reached")
-
-    async def _handle_reply(self, reply: str) -> dict:
-        # Check for signal strings first
-        if reply.startswith("DONE:"):
-            return {"type": "done", "value": reply[5:].strip()}
-        
-        if reply.startswith("FAILED:"):
-            return {"type": "failed", "value": reply[7:].strip()}
-        
-        if reply.startswith("NEED_INPUT:"):
-            return {"type": "need_input", "value": reply[11:].strip()}
-        
-        # Try to parse as JSON action
-        # Model may wrap in ```json``` or return raw JSON
-        json_match = re.search(r'\{.*\}', reply, re.DOTALL)
-        if json_match:
-            try:
-                action = json.loads(json_match.group())
-                return {"type": "action", "value": action}
-            except json.JSONDecodeError:
-                pass
-        
-        # If nothing parsed, ask for screenshot (safe default)
-        return {"type": "action", "value": {"action": "screenshot"}}
-
-Phase 6 — Schemas
-core/models.py
-pythonfrom pydantic import BaseModel
-from typing import Optional, Literal
-
-class AgentResult(BaseModel):
+@dataclass
+class AgentResult:
     status: Literal["done", "failed"]
-    deliverable: Optional[str] = None
-    reason: Optional[str] = None
+    deliverable: str | None = None
+    reason: str | None = None
+```
 
-Phase 7 — Entry Points
-main.py — for dev/testing:
-pythonimport asyncio
-from core.agent import ComputerAgent
-from executor.chrome import launch_chrome
+### computer-agent/screenshot.py
+Captures the full screen and returns it as base64 for the Responses API.
+- Uses `PIL.ImageGrab.grab()` — same library as `tools/snapshot/snapshot_tool.py`
+- Resizes to max **1366×768** to keep vision token cost low
+- Returns `(b64_png_str, (width, height))`
 
-async def main():
-    # Launch Chrome with persistent profile
-    chrome = launch_chrome(profile_name="default")
-    
-    agent = ComputerAgent()
-    result = await agent.run("Go to google.com and search for 'Gemini computer use'")
-    
-    print(f"\nResult: {result.status}")
-    print(f"Deliverable: {result.deliverable or result.reason}")
+### computer-agent/actions.py
+Receives a CUA action dict from the model and executes via PyAutoGUI.
 
-if __name__ == "__main__":
-    asyncio.run(main())
-Parent agent calling interface — single function to expose:
-python# This is what the parent agent calls
+**Supported actions:**
+- `screenshot` → handled by main loop
+- `click` / `double_click` → `pyautogui.click()` / `pyautogui.doubleClick()`
+- `type` → `pyautogui.write(text, interval=0.04)`
+- `key` / `keypress` → `pyautogui.hotkey(*parts)` or `pyautogui.press(key)`
+- `scroll` → `pyautogui.scroll()` at coordinate
+- `drag` → `pyautogui.drag()`
+- `move` → `pyautogui.moveTo()`
+- `wait` → `asyncio.sleep(duration_ms / 1000)`
+
+**Post-action settle delays (slow machine defaults):**
+| Action | Delay |
+|---|---|
+| Default (all) | **2.0s** |
+| `click` / `double_click` | **2.0s** |
+| `key` with enter/return/tab | **2.5s** (likely navigation) |
+| `type` | **1.0s** (input only, no navigation) |
+| `wait` | model-specified duration only |
+| `screenshot` | **0s** |
+
+Also: `pyautogui.PAUSE = 0.2`, `pyautogui.FAILSAFE = True`
+
+### computer-agent/browser.py
+Launches Chrome pointing at a persistent `user-data-dir`. Login state persists automatically.
+
+- Profile stored at `~/.computer-agent/profiles/<name>/user-data`
+- Flags: `--remote-debugging-port=9222`, `--user-data-dir=<path>`, `--start-maximized`, `--no-first-run`, `--no-default-browser-check`
+- Waits for Chrome via polling `http://127.0.0.1:9222/json/version` (15s timeout)
+- Chrome binary search: checks `CHROME_PATH` env var → standard Win32 paths → raises RuntimeError
+
+---
+
+## Phase 2 — System Prompts
+
+### computer-agent/prompts.py
+
+**BROWSER_PROMPT** instructs the model to:
+- Control Chrome: address bar, tabs, navigation, scrolling, form filling
+- Signal completion:
+  - `DONE: <what was accomplished>`
+  - `NEED_INPUT: <question for the user>`
+  - `FAILED: <reason>`
+- For login pages: `NEED_INPUT: Please log in to <site> then type 'done'`
+- Never loop on login — if login page reappears after user confirmed, return `FAILED`
+- After clicking navigation elements or pressing Enter in URL bar: request screenshot
+
+**DESKTOP_PROMPT** instructs the model to:
+- Control the full Windows desktop: Start menu, taskbar, File Explorer, apps
+- Open apps via Start menu search or desktop shortcuts
+- Use keyboard shortcuts: Win key, Alt+Tab, Win+D, etc.
+- Same `DONE/NEED_INPUT/FAILED` signal convention
+- No login/session logic
+
+---
+
+## Phase 3 — Main Agent Loop
+
+### computer-agent/agent.py
+
+**API:** OpenAI Responses API
+
+```python
+tool_def = {
+    "type": "computer",
+    "environment": "browser" if mode == "browser" else "desktop",
+    "display_width": screen_w,
+    "display_height": screen_h,
+}
+response = client.responses.create(
+    model="gpt-5.4",
+    tools=[tool_def],
+    input=input_list,   # maintained client-side
+)
+```
+
+**input_list grows as:**
+```
+[{"role": "user", "content": task_description}]
+
+After each turn:
+  → append computer_call item from response.output
+  → append {"type": "computer_call_output", "call_id": "...", "output": {
+        "type": "computer_screenshot",
+        "image_url": "data:image/png;base64,<b64>",
+        "detail": "original"
+    }}
+```
+
+**Loop logic per turn (max 60 turns):**
+1. Check token count (excluding base64 blobs) → compact if ≥ 255k
+2. Call `client.responses.create(...)`
+3. Scan `response.output` items:
+   - `type == "computer_call"`:
+     - Send `ping_user(update)`: `[browse:{mode}] {action_type}`
+     - Execute action via `actions.py`
+     - Settle delay
+     - Take screenshot
+     - Append call + output items to input_list
+   - `type == "text"`:
+     - Parse for `DONE:` / `NEED_INPUT:` / `FAILED:` prefix
+     - `NEED_INPUT` → `ping_user(type="query:msg")` blocks → append user reply as user message → continue (no screenshot this turn)
+     - `DONE` / `FAILED` → return `AgentResult`
+4. Exhausted turns → `AgentResult(status="failed", reason="Max turns reached")`
+
+**Communication — reuses existing `comm_channels/`:**
+```python
+from comm_channels.ping_tool import ping_command
+from comm_channels.ping_types import PingParams
+```
+- Live action updates → `type="update"`, `edit_last_update=True`
+- User questions (login, OTP) → `type="query:msg"`, blocks until reply
+
+---
+
+## Phase 4 — Token Compaction
+
+### computer-agent/compaction.py
+
+- Estimates tokens by stripping all `data:image/...;base64,<blob>` before counting
+- Threshold: **255k tokens** → trigger
+- Calls `agent_design.memory_compaction.run_compaction(messages, level="computer")` — the `COMPUTER_COMPACTION_PROMPT` is already implemented in `agent_design/memory_compaction.py`
+- Serializes Responses API `input_list` items to text (role messages + action summaries, no base64)
+- Rebuilds `input_list` as:
+  ```
+  [original_task_message, compacted_summary_as_user_msg, last_4_items]
+  ```
+
+---
+
+## Phase 5 — Login & Session Management (browser mode only)
+
+### Login Flow (once per profile)
+```
+Agent navigates to site
+→ Screenshot shows login page
+→ Model: NEED_INPUT: Please log in to LinkedIn then type 'done'
+→ ping_user(type="query:msg") blocks
+→ User logs in manually, types 'done'
+→ Agent continues with logged-in session
+→ Chrome saves login state to user-data-dir
+→ Future runs: already logged in, agent proceeds directly
+```
+
+### OTP Flow
+```
+→ Screenshot shows OTP field
+→ Model: NEED_INPUT: LinkedIn sent an OTP. Please send me the 6-digit code.
+→ ping_user(type="query:msg") blocks
+→ User sends "482910"
+→ Agent fills the OTP field via type action, continues
+```
+
+### Rules
+- **Ask for login once per run** — if login page reappears after user confirmed, return `FAILED`
+- **No password typing** — agent never has credentials; user handles login manually
+- **Google OAuth**: if "Sign in with Google" is visible and Google is already signed in, agent clicks through without blocking; only blocks for manual credential entry
+- **Session reuse**: Chrome profile persists; once logged in anywhere, it stays logged in
+
+---
+
+## Phase 6 — Parent Agent Integration
+
+### New tool: `tools/browse/`
+
+Files:
+- `tools/browse/__init__.py` — exports `browse_command`, `BrowseParams`, `BROWSE_TOOL`
+- `tools/browse/browse_tool.py` — imports `run_computer_task`, calls via `asyncio.run()`
+- `tools/browse/browse_types.py` — params + result dataclasses
+
+**Tool schema:**
+```json
+{
+  "name": "browse",
+  "description": "Delegate a task to the computer agent. mode='browser' for web/Chrome tasks, mode='desktop' for controlling Windows apps.",
+  "parameters": {
+    "task":           "string — what to do",
+    "mode":           "string (default: 'browser') — 'browser' or 'desktop'",
+    "profile":        "string (default: 'default') — Chrome profile (browser mode only)",
+    "launch_browser": "boolean (default: true) — launch Chrome (browser mode only)"
+  }
+}
+```
+
+**Existing files to update:**
+- `agent_utils/tool_schemas.py` — add `BROWSE_TOOL` to `_CUSTOM_TOOLS`
+- `agent_utils/tool_dispatcher.py` — add `elif name == "browse":` dispatch
+- `tools/__init__.py` — export `browse_command`, `BrowseParams`, `BROWSE_TOOL`
+
+### computer-agent/__init__.py
+```python
+from .browser import launch_chrome
+from .agent import ComputerAgent
+
 async def run_computer_task(
     task: str,
+    mode: str = "browser",       # "browser" | "desktop"
     profile: str = "default",
-    launch_browser: bool = True
+    launch_browser: bool = True,
+    medium: str = "telegram",
 ) -> dict:
-    if launch_browser:
+    if mode == "browser" and launch_browser:
         launch_chrome(profile_name=profile)
-    
-    agent = ComputerAgent()
-    result = await agent.run(task)
-    return result.model_dump()
+    result = await ComputerAgent(mode=mode, medium=medium).run(task)
+    return {"status": result.status, "deliverable": result.deliverable, "reason": result.reason}
 ```
 
 ---
 
-### Build Order
+## Build Order
+
 ```
-Phase 1 — executor/screenshot.py + executor/actions.py
-          Test: take screenshot, execute a click, confirm mouse moved
-
-Phase 2 — executor/chrome.py
-          Test: launch Chrome, verify it opens with your profile logged in
-
-Phase 3 — comms/user.py
-          (trivial, 10 lines)
-
-Phase 4 — core/prompts.py + core/models.py
-
-Phase 5 — core/agent.py
-          Test: run("open a new tab in Chrome")
-
-Phase 6 — Wire run_computer_task() into parent agent
+1. computer-agent/models.py + prompts.py                (trivial)
+2. computer-agent/screenshot.py + actions.py             (test: screenshot, execute a click)
+3. computer-agent/browser.py                             (test: Chrome opens with profile logged in)
+4. computer-agent/compaction.py                          (t`est: token estimate, compact at 255k)
+5. computer-agent/agent.py                               (test: run("go to google.com"))
+6. Desktop mode: adjust prompts.py + mode param          (test: run("open Notepad", mode="desktop"))
+7. tools/browse/ + wire into tool_schemas/dispatcher     (test: parent agent calls browse tool)
 ```
 
 ---
 
-### The Login + OTP Flow in Practice
+## Verification
+
+1. **Basic browser:** `asyncio.run(run_computer_task('Search for Python on Google'))` — Chrome opens, agent searches, returns `DONE`
+2. **Login flow:** Navigate to a site requiring login — NEED_INPUT fires via Telegram, user logs in, agent continues
+3. **Session reuse:** Run same site again — no NEED_INPUT (session saved in Chrome profile)
+4. **Desktop mode:** `run_computer_task("Open Notepad and type hello world", mode="desktop")` — agent controls Windows desktop, no Chrome launched
+5. **Compaction:** Long multi-step task that exceeds 255k tokens — verify compaction fires and agent resumes correctly
+6. **End-to-end:** Parent agent: `browse("Post a test update on LinkedIn")` → Telegram shows live action updates → result returned to parent
+
+---
+
+## The Login + OTP Flow in Practice
+
 ```
-Parent: run_computer_task("post on LinkedIn: 'Hello world'")
+Parent: browse("post on LinkedIn: 'Hello world'", mode="browser")
     ↓
 Agent navigates to linkedin.com
     ↓
 Screenshot shows login page
     ↓
-Gemini returns: NEED_INPUT: Please log in to LinkedIn. 
-                Click confirm when done.
+Model: NEED_INPUT: Please log in to LinkedIn. Type 'done' when complete.
     ↓
-ping_user blocks → you log in manually → type "done"
+ping_user blocks → user logs in manually → types 'done'
     ↓
 Agent continues with logged-in session
     ↓
 Future runs: LinkedIn already logged in, agent proceeds directly
     ↓
-OTP case: Gemini returns NEED_INPUT: LinkedIn sent an OTP. 
-          Please send me the code.
+OTP case: Model: NEED_INPUT: LinkedIn sent an OTP. Please send me the code.
     ↓
-You reply "482910" → agent fills the field
+User replies '482910' → agent types the code into the OTP field
+```

@@ -4,6 +4,60 @@ All notable changes to Crunchy-Neck-Agent are documented here.
 
 ---
 
+## [Unreleased] — 2026-03-13
+
+### Added — `tools/browse/` — Scout computer-use subagent tool (`tools/browse/`)
+
+Crunchy can now delegate browser and desktop GUI tasks to Scout via the `browse` tool.
+
+- `browse_types.py` — `BrowseParams` (task, mode, launch_browser, max_turns), `BrowseResultDone`, `BrowseResultFailed`
+- `browse_tool.py` — `browse_command()` reads `OPENAI_API_KEY` from env/.env, builds `RunConfig`, calls `computer_agent.agent.run()`, returns typed result
+- `__init__.py` — `TOOL_DEFINITION` with full OpenAI function-calling schema
+- `test_browse.py` — 5 unit tests (defaults, custom params, no-key failure, result fields)
+- Wired into `tools/__init__.py`, `agent_utils/tool_schemas.py`, `agent_utils/tool_dispatcher.py` (passes `medium` through), `agent_utils/system_prompt.py`
+
+---
+
+### Added — `skills/scout/SKILL.md` — Scout usage skill for Crunchy
+
+Teaches Crunchy when and how to use the `browse` tool:
+
+- When to use (JS-rendered scraping, form filling, desktop automation, login-required sites)
+- When not to use (anything exec/read/write handles directly)
+- Full parameter table, quick examples for browser and desktop mode
+- Login retry pattern: if Scout returns failed with login reason, ask user to log in then retry with `launch_browser=False`
+- Progress update guidance (send one ping before long tasks; Scout sends its own live action updates)
+
+---
+
+### Added — `computer_agent/scout_log.py` — structured per-session JSONL logger
+
+Every Scout run now writes a full turn-by-turn log to `.agent/scout/logs/YYYYMMDD_<session_id>.jsonl`. Log path is sent as the first ping update.
+
+Events logged: `session.start`, `session.end`, `turn.start`, `model.response`, `action.execute`, `action.result`, `action.error`, `screenshot.taken`, `signal.detected`, `text.output`, `implicit_done`, `no_progress`, `need_input.sent/reply/timeout`, `compaction.skipped/done/error`, `api.error`, `chrome.launch`, `chrome.launch_error`
+
+---
+
+### Changed — `computer_agent/agent.py` — full logging instrumentation + implicit-DONE fix
+
+- Imports and uses `ScoutLog` throughout the turn loop
+- `compaction.skipped/done/error` events replace bare `print()` calls
+- Each action execution now wrapped in `try/except` — `action.error` logged, loop continues instead of crashing
+- **Bug fix:** when model returns text without `DONE:` prefix and takes no action, treated as `AgentResultDone(deliverable=last_text)` instead of `AgentResultFailed` ("no progress")
+
+---
+
+### Fixed — `computer_agent/actions.py` — non-ASCII text corruption via clipboard fallback
+
+`pyautogui.write()` silently drops or corrupts non-ASCII characters (em dashes `—`, curly quotes `""`, accented characters). Scout would stop with `FAILED` when asked to type such text.
+
+- Pure ASCII text: still uses `pyautogui.write()` (reliable, character-by-character)
+- Any non-ASCII text: copies to clipboard with `pyperclip.copy()` then pastes with `Ctrl+V` — preserves exact string
+- Transparent to the model — no prompt changes needed
+- Added `pyperclip` to `requirements.txt`
+
+---
+
 ## [Unreleased] — 2026-03-12 (patch 2)
 
 ### Fixed — `image_gen` image extraction and save (`tools/image_gen/image_gen_tool.py`)

@@ -131,5 +131,12 @@ def _call_tool(
         params = ImageGenParams(**_filter(args, ImageGenParams.__dataclass_fields__))
         return image_gen_command(params, workspace_root=workspace_root, agent_session_id=agent_session_id)
 
+    # ── browse (Scout computer-use subagent) ──────────────────────────────────
+    elif name == "browse":
+        from tools import browse_command, BrowseParams
+        params = BrowseParams(**_filter(args, BrowseParams.__dataclass_fields__))
+        return browse_command(params, workspace_root=workspace_root,
+                              agent_session_id=agent_session_id, medium=medium)
+
     else:
         raise ValueError(f"Unknown tool: {name!r}")

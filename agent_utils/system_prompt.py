@@ -78,6 +78,7 @@ send_user_media  — send files to the user (photo, document, video, audio)
 snapshot         — capture a desktop screenshot
 tts              — text-to-speech synthesis via Inworld API
 image_gen        — generate images via Gemini
+browse           — delegate browser/desktop GUI tasks to Scout (computer-use subagent)
 web_search       — search the web (built-in OpenAI tool)
 
 Context window: 400,000 tokens. History is compacted automatically at 90% capacity."""

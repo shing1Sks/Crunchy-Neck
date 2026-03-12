@@ -28,10 +28,14 @@ pyyaml                      # YAML frontmatter parsing in skill_use.py
 openai                      # GPT-5.2 compaction calls (memory_compaction.py)
 tiktoken                    # accurate token counting in estimate_tokens(); falls back to char/4 heuristic if absent
 
+# ── computer_agent (Scout) ────────────────────────────────────────────────────
+pyautogui                   # CUA action execution (click, type, key, scroll, drag)
+pyperclip                   # clipboard-based typing for non-ASCII text (em dashes, smart quotes, etc.)
+httpx                       # Chrome DevTools readiness poll in browser.py
+
 # ── Future tools (add as implemented) ─────────────────────────────────────────
 # anthropic               # Claude API
 # slack-sdk               # Slack comm-channel adapter
 # discord.py              # Discord comm-channel adapter
-# pyautogui               # browser agent desktop control
 # pydantic                # schema validation
 # nanoid                  # session ID generation (or use uuid, already stdlib)

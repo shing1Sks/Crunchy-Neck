@@ -18,6 +18,7 @@ from tools import (
     SNAPSHOT_TOOL,
     TTS_TOOL,
     IMAGE_GEN_TOOL,
+    BROWSE_TOOL,
 )
 
 _CUSTOM_TOOLS = [
@@ -32,6 +33,7 @@ _CUSTOM_TOOLS = [
     SNAPSHOT_TOOL,
     TTS_TOOL,
     IMAGE_GEN_TOOL,
+    BROWSE_TOOL,
 ]
 
 

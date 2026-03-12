@@ -10,6 +10,7 @@ from .send_media import send_media_command, SendMediaParams, TOOL_DEFINITION as 
 from .snapshot import snapshot_command, SnapshotParams, TOOL_DEFINITION as SNAPSHOT_TOOL
 from .tts import tts_command, TtsParams, TOOL_DEFINITION as TTS_TOOL
 from .image_gen import image_gen_command, ImageGenParams, TOOL_DEFINITION as IMAGE_GEN_TOOL
+from .browse import browse_command, BrowseParams, TOOL_DEFINITION as BROWSE_TOOL
 
 ALL_TOOLS = [
     EXEC_TOOL, PROCESS_TOOL, READ_TOOL, WRITE_TOOL, EDIT_TOOL,
@@ -17,6 +18,7 @@ ALL_TOOLS = [
     PING_TOOL,
     SEND_MEDIA_TOOL,
     SNAPSHOT_TOOL, TTS_TOOL, IMAGE_GEN_TOOL,
+    BROWSE_TOOL,
 ]
 
 __all__ = [
@@ -31,5 +33,6 @@ __all__ = [
     "snapshot_command", "SnapshotParams", "SNAPSHOT_TOOL",
     "tts_command", "TtsParams", "TTS_TOOL",
     "image_gen_command", "ImageGenParams", "IMAGE_GEN_TOOL",
+    "browse_command", "BrowseParams", "BROWSE_TOOL",
     "ALL_TOOLS",
 ]

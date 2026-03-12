@@ -62,7 +62,7 @@ CompactionErrorCode = Literal[
     "INTERNAL",
 ]
 
-CompactionLevel = Literal["orchestrator", "computer"]
+CompactionLevel = Literal["orchestrator"]
 
 
 @dataclass(kw_only=True)
@@ -144,49 +144,8 @@ PRIORITIZE recent context over older history. The agent needs to know
 what it was doing, not just what was discussed.
 """
 
-COMPUTER_COMPACTION_PROMPT: str = """\
-You are a context compaction engine for a computer-browsing subagent.
-This subagent navigates the computer desktop: opening files, apps, browser tabs,
-system UI, and interacting with GUI elements — not just web pages.
-Extract the complete session state so the subagent can resume without prior messages.
-Output ONLY the structured block. No preamble. No explanation.
-
----
-
-## BROWSING OBJECTIVE
-<What the subagent was asked to find or do, verbatim>
-
-## CURRENT LOCATION
-<Exact URL if in a browser, or app name + file path / window title if on the desktop>
-
-## SESSION STATE
-<Login status, open apps, active windows, clipboard contents, any auth tokens seen>
-
-## CRITICAL VALUES
-<All URLs, file paths, app names, IDs, form values, API keys, extracted data — anything found.
-Format: key: value. If it appeared on screen — include it.>
-
-## NAVIGATION HISTORY (compressed)
-<Bullet list of locations visited / actions taken and what was found or done at each.
-Keep it tight — just enough to understand the path taken.>
-
-## DATA COLLECTED SO FAR
-<Structured dump of all meaningful extracted data — tables as tables, JSON as JSON>
-
-## ERRORS & DEAD ENDS
-<Pages that failed, dialogs that blocked, CAPTCHAs, redirects that went nowhere,
-approaches abandoned and why>
-
-## NEXT ACTION
-<Exact next step: URL to navigate to, app to open, button to click, or command to run>
-
-PRIORITIZE recent context over older history. The agent needs to know
-what it was doing, not just what was discussed.
-"""
-
 _COMPACTION_PROMPTS: dict[str, str] = {
     "orchestrator": ORCHESTRATOR_COMPACTION_PROMPT,
-    "computer": COMPUTER_COMPACTION_PROMPT,
 }
 
 
