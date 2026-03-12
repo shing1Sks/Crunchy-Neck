@@ -96,9 +96,11 @@ def edit_message_text(
     text: str,
     *,
     parse_mode: str = "MarkdownV2",
+    reply_markup: dict[str, Any] | None = None,
 ) -> dict[str, Any] | bool:
     """Edit an existing message's text.
 
+    Pass reply_markup={"inline_keyboard": []} to remove inline buttons.
     Returns the updated Message dict on success.
     Returns False if Telegram says "message is not modified" (treat as success).
     Raises TelegramAPIError for all other failures.
@@ -109,6 +111,8 @@ def edit_message_text(
         "text": text,
         "parse_mode": parse_mode,
     }
+    if reply_markup is not None:
+        payload["reply_markup"] = reply_markup
     try:
         result = _call(token, "editMessageText", payload)
         assert isinstance(result, dict)
@@ -140,6 +144,22 @@ def answer_callback_query(token: str, callback_query_id: str) -> bool:
     """Acknowledge a callback query to dismiss the loading spinner on the button."""
     result = _call(token, "answerCallbackQuery", {"callback_query_id": callback_query_id})
     return bool(result)
+
+
+def delete_message(token: str, chat_id: str, message_id: int) -> bool:
+    """Delete a message by ID.
+
+    Returns True on success.
+    Returns False silently if the message is already gone — idempotent.
+    Raises TelegramAPIError for all other failures.
+    """
+    try:
+        result = _call(token, "deleteMessage", {"chat_id": chat_id, "message_id": message_id})
+        return bool(result)
+    except TelegramAPIError as exc:
+        if exc.error_code == 400 and "not found" in exc.description.lower():
+            return False
+        raise
 
 
 def upload_media(

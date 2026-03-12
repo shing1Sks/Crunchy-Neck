@@ -65,21 +65,18 @@ def image_gen_command(
                   workspace_root=workspace_root, error_code="api_error", detail=str(exc))
         return ImageGenResultError(error_code="api_error", detail=str(exc))
 
-    # ── Extract image part ─────────────────────────────────────────────────────
-    img = None
+    # ── Extract image bytes ────────────────────────────────────────────────────
+    raw_bytes: bytes | None = None
     for part in response.parts:
         if part.inline_data is not None:
-            try:
-                img = part.as_image()
-            except Exception as exc:
-                log_event(event="image_gen.error", agent_session_id=agent_session_id,
-                          workspace_root=workspace_root, error_code="api_error",
-                          detail=f"Failed to decode image part: {exc}")
-                return ImageGenResultError(error_code="api_error",
-                                          detail=f"Failed to decode image part: {exc}")
+            data = part.inline_data.data
+            if isinstance(data, str):  # guard: base64 str in some SDK versions
+                import base64 as _b64
+                data = _b64.b64decode(data)
+            raw_bytes = data
             break
 
-    if img is None:
+    if raw_bytes is None:
         detail = "Gemini returned no image in the response"
         log_event(event="image_gen.error", agent_session_id=agent_session_id,
                   workspace_root=workspace_root, error_code="no_image_in_response",
@@ -91,22 +88,33 @@ def image_gen_command(
     out_dir.mkdir(parents=True, exist_ok=True)
     ts = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     filename = f"img-{ts}.png"
+    out_path = out_dir / filename
 
     try:
-        img.save(out_dir / filename, format="PNG")
+        out_path.write_bytes(raw_bytes)
     except Exception as exc:
         log_event(event="image_gen.error", agent_session_id=agent_session_id,
                   workspace_root=workspace_root, error_code="save_failed", detail=str(exc))
         return ImageGenResultError(error_code="save_failed", detail=str(exc))
 
+    # ── Get dimensions (non-fatal if PIL unavailable) ──────────────────────────
+    width, height = 0, 0
+    try:
+        import io as _io
+        from PIL import Image as _PILImage
+        with _PILImage.open(_io.BytesIO(raw_bytes)) as pil_img:
+            width, height = pil_img.size
+    except Exception:
+        pass
+
     rel_path = str(Path(".agent") / "images" / filename)
     log_event(event="image_gen.done", agent_session_id=agent_session_id,
               workspace_root=workspace_root, path=rel_path,
-              prompt=params.prompt[:120], width=img.width, height=img.height)
+              prompt=params.prompt[:120], width=width, height=height)
 
     return ImageGenResultDone(
         path=rel_path,
-        width=img.width,
-        height=img.height,
+        width=width,
+        height=height,
         prompt=params.prompt,
     )

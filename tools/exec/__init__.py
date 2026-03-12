@@ -17,7 +17,8 @@ TOOL_DEFINITION = {
         "- yieldMs=0 to block forever (only for known-short commands).\n"
         "- background=true to return session_id immediately (servers, daemons).\n"
         "- Always check exit_code — non-zero means the command failed.\n"
-        "- Use env dict for secrets, never embed them in the command string."
+        "- Use env dict for secrets, never embed them in the command string.\n"
+        "- Never use --body-file - or any stdin-until-EOF pattern; pass content via the `stdin` parameter instead."
     ),
     "parameters": {
         "type": "object",
@@ -69,7 +70,11 @@ TOOL_DEFINITION = {
             },
             "stdin": {
                 "type": "string",
-                "description": "Text to feed to the process stdin at start. Pipe stays open for send-keys.",
+                "description": (
+                    "Text to feed to the process stdin at launch. "
+                    "Use this instead of --body-file - or any piped stdin pattern. "
+                    "Pipe stays open after launch for send-keys if additional input is needed."
+                ),
             },
             "background": {
                 "type": "boolean",

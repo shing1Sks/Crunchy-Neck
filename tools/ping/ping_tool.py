@@ -80,7 +80,7 @@ def _dispatch_telegram(
     if params.type == "chat":
         return sender.send_chat(params, cfg)
     if params.type == "query:msg":
-        return sender.send_query_msg(params, cfg)
+        return sender.send_query_msg(params, cfg, workspace_root)
     if params.type == "query:options":
         return sender.send_query_options(params, cfg)
 

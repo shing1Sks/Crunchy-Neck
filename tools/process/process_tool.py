@@ -39,6 +39,14 @@ def process_command(params: ProcessParams) -> dict:
                     f"Process finished (exit_code={result['exit_code']}). "
                     "You can call process({action:'get-log', session_id}) for full output."
                 )
+            elif result["lines_so_far"] == 0 and result["duration_ms"] > 3000:
+                base["hint"] = (
+                    f"Process running {result['duration_ms']}ms with NO output — "
+                    "it is likely blocked waiting for stdin input "
+                    "(e.g. a command using --body-file - or similar stdin-until-EOF pattern). "
+                    f"Kill it: process({{action:'kill', session_id:'{params.session_id}'}}) "
+                    "then re-run the command passing the body/input via the exec `stdin` parameter instead."
+                )
             else:
                 base["hint"] = (
                     f"Process still running ({result['duration_ms']}ms elapsed). "

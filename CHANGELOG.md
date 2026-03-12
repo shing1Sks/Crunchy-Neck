@@ -4,6 +4,78 @@ All notable changes to Crunchy-Neck-Agent are documented here.
 
 ---
 
+## [Unreleased] — 2026-03-12 (patch 2)
+
+### Fixed — `image_gen` image extraction and save (`tools/image_gen/image_gen_tool.py`)
+
+`part.as_image()` was incompatible with some `google-genai` SDK versions and raised `Image.save() got an unexpected keyword argument 'format'`. Replaced with direct raw-bytes extraction.
+
+- Read `part.inline_data.data` directly; base64-decode if the SDK returns a string
+- Save via `out_path.write_bytes(raw_bytes)` — no PIL involved in the write path
+- PIL now used only for dimension reading (`width`, `height`), wrapped in a non-fatal `try/except` so missing Pillow doesn't break saves
+
+---
+
+### Changed — `send_query_msg` reuses existing "Listening..." prompt (`comm_channels/telegram/sender.py`, `ping_tool.py`)
+
+Previously sent a new `ForceReply` message every time the agent waited for user input, cluttering the chat. Now:
+
+- Saves the sent message ID to state as `listen_message_id`
+- On next call, attempts `editMessageText` in-place; only sends a fresh message if the edit fails
+- `_poll_for_text_reply` relaxed: accepts **any** text message with a higher ID than the prompt (no longer requires an explicit reply-to), making it work without ForceReply threading
+- `send_query_msg` now receives `workspace_root` to read/write state — signature updated in both `comm_channels/ping_tool.py` and `tools/ping/ping_tool.py`
+
+---
+
+### Added — final-response delivery + status-message cleanup (`crunchy-neck-agent.py`)
+
+After the agent loop completes and before wrapup:
+
+- `_send_final_response(content)` — sends the agent's final answer as a persistent `chat` message on Telegram (previously only printed to terminal)
+- `_delete_status_message()` — deletes the ephemeral "Working on it..." `update` message from Telegram once the final answer is visible; updates state to clear `last_update_message_id`
+
+---
+
+### Fixed — `send_update` state persistence bug (`comm_channels/telegram/sender.py`)
+
+`save_state` was called with `{"last_update_message_id": new_id}` — a new dict — discarding all other state keys (e.g. `listen_message_id`). Fixed by mutating the loaded state dict and saving the whole thing.
+
+---
+
+### Changed — `_poll_for_callback` confirms chosen option (`comm_channels/telegram/sender.py`)
+
+After the user taps an inline button:
+
+- Edits the original message to append `✅ *chosen_option*` in MarkdownV2
+- Passes `reply_markup={"inline_keyboard": []}` to remove the buttons from the message
+
+---
+
+### Added — `reply_markup` param + `delete_message` to Telegram client (`comm_channels/telegram/client.py`)
+
+- `edit_message_text` now accepts an optional `reply_markup` dict — pass `{"inline_keyboard": []}` to strip buttons
+- New `delete_message(token, chat_id, message_id)` — deletes a message; returns `False` silently if already gone (idempotent); imported in `sender.py`
+
+---
+
+### Changed — `skill_use.py` skips binary availability check (`agent_design/skill_use.py`)
+
+Removed the `anyBins` PATH check from `_is_eligible`. All skills are now included in the system prompt regardless of whether their required binary is on PATH. `import shutil` removed.
+
+---
+
+### Changed — `exec` + `process` tool descriptions improved for stdin guidance (`tools/exec/__init__.py`, `tools/process/__init__.py`, `tools/process/process_tool.py`)
+
+Addresses repeated agent confusion around `--body-file -` hanging processes:
+
+- `exec` description: added "Never use `--body-file -` or any stdin-until-EOF pattern; pass content via the `stdin` parameter instead"
+- `exec.stdin` description: clarified it is the preferred alternative to piped stdin
+- `process.action` description: added per-action explanations; `close-stdin` noted as the EOF-unblock escape hatch
+- `process.keys` description: added multi-line guidance; recommends `exec.stdin` at launch over send-keys loops
+- `process_tool.py` poll hint: if a process has been running >3 s with zero output lines, emits a hint identifying the likely stdin-block and telling the agent to kill + re-run with `stdin=`
+
+---
+
 ## [Unreleased] — 2026-03-12
 
 ### Added — `crunchy-neck-agent.py` + `agent_utils/` (main agent loop)

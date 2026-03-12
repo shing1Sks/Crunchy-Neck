@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING
 from .client import (
     TelegramAPIError,
     answer_callback_query,
+    delete_message,
     edit_message_text,
     get_updates,
     send_message,
@@ -64,7 +65,8 @@ def send_update(
     try:
         msg = send_message(cfg.bot_token, cfg.chat_id, text)
         new_id: int = msg["message_id"]
-        save_state(workspace_root, {"last_update_message_id": new_id})
+        state["last_update_message_id"] = new_id
+        save_state(workspace_root, state)
         return PingResultSent(message_id=new_id)
     except TelegramAPIError as exc:
         return PingResultError(error_code="send_failed", detail=str(exc))
@@ -82,19 +84,38 @@ def send_chat(params: PingParams, cfg: TelegramConfig) -> PingResult:
 
 # ─── query:msg ────────────────────────────────────────────────────────────────
 
-def send_query_msg(params: PingParams, cfg: TelegramConfig) -> PingResult:
-    force_reply: dict[str, Any] = {"force_reply": True, "selective": False}
-    try:
-        sent = send_message(
-            cfg.bot_token,
-            cfg.chat_id,
-            render_telegram_query_msg(params.msg),
-            reply_markup=force_reply,
-        )
-    except TelegramAPIError as exc:
-        return PingResultError(error_code="send_failed", detail=str(exc))
+def send_query_msg(params: PingParams, cfg: TelegramConfig, workspace_root: str) -> PingResult:
+    """Send or reuse a 'Listening...' prompt, then poll for any new message."""
+    state = load_state(workspace_root)
+    listen_id: int | None = state.get("listen_message_id")
+    text = render_telegram_query_msg(params.msg)
+    sent_msg_id: int | None = None
 
-    return _poll_for_text_reply(cfg, sent["message_id"], params.timeout)
+    # Try to edit the existing "Listening..." message in-place
+    if listen_id is not None:
+        try:
+            edit_message_text(cfg.bot_token, cfg.chat_id, listen_id, text)
+            sent_msg_id = listen_id
+        except TelegramAPIError:
+            sent_msg_id = None  # Fall through to send a new one
+
+    # Send a fresh message if we have no valid reusable one
+    if sent_msg_id is None:
+        force_reply: dict[str, Any] = {"force_reply": True, "selective": False}
+        try:
+            sent = send_message(
+                cfg.bot_token,
+                cfg.chat_id,
+                text,
+                reply_markup=force_reply,
+            )
+        except TelegramAPIError as exc:
+            return PingResultError(error_code="send_failed", detail=str(exc))
+        sent_msg_id = sent["message_id"]
+        state["listen_message_id"] = sent_msg_id
+        save_state(workspace_root, state)
+
+    return _poll_for_text_reply(cfg, sent_msg_id, params.timeout)
 
 
 # ─── query:options ────────────────────────────────────────────────────────────
@@ -145,16 +166,17 @@ def _poll_for_text_reply(
         for update in updates:
             offset = update["update_id"] + 1
             msg = update.get("message") or {}
-            reply_to = msg.get("reply_to_message") or {}
-            if reply_to.get("message_id") == original_msg_id:
+            msg_id = msg.get("message_id")
+            # Accept any text message that arrived after the Listening prompt
+            if msg_id is not None and msg_id > original_msg_id and msg.get("text"):
                 return PingResultResponse(
                     response=msg.get("text", ""),
-                    message_id=msg.get("message_id"),
+                    message_id=msg_id,
                 )
 
     return PingResultError(
         error_code="timeout",
-        detail=f"No reply received within {timeout}s",
+        detail=f"No message received within {timeout}s",
     )
 
 
@@ -193,8 +215,27 @@ def _poll_for_callback(
                     answer_callback_query(cfg.bot_token, cb["id"])
                 except TelegramAPIError:
                     pass  # Non-fatal — the response is still valid
+
+                # Edit the message to show the chosen option and remove the buttons
+                chosen = cb.get("data", "")
+                original_text = cb_msg.get("text", "")
+                confirmed_text = (
+                    escape_mdv2(original_text) + "\n\n"
+                    + "✅ *" + escape_mdv2(chosen) + "*"
+                )
+                try:
+                    edit_message_text(
+                        cfg.bot_token,
+                        cfg.chat_id,
+                        original_msg_id,
+                        confirmed_text,
+                        reply_markup={"inline_keyboard": []},
+                    )
+                except TelegramAPIError:
+                    pass  # Non-fatal — button feedback is cosmetic
+
                 return PingResultResponse(
-                    response=cb.get("data", ""),
+                    response=chosen,
                     message_id=cb_msg.get("message_id"),
                 )
 

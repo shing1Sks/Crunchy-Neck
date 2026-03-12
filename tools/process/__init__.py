@@ -9,7 +9,9 @@ TOOL_DEFINITION = {
     "description": (
         "Manage long-running processes started by exec(). "
         "Use poll to check status, kill to stop, send-keys/submit to send input, "
-        "list to see all sessions, get-log for full output."
+        "list to see all sessions, get-log for full output. "
+        "If a process produces no output and appears stuck, it is likely waiting for stdin — "
+        "kill it and re-run with exec's `stdin` parameter to pass the input at launch."
     ),
     "parameters": {
         "type": "object",
@@ -17,7 +19,14 @@ TOOL_DEFINITION = {
             "action": {
                 "type": "string",
                 "enum": ["poll", "kill", "send-keys", "submit", "close-stdin", "list", "get-log"],
-                "description": "Action to perform.",
+                "description": (
+                    "Action to perform. "
+                    "poll=check status/output. kill=terminate. "
+                    "send-keys=write text to stdin (no auto newline unless press_enter=true). "
+                    "submit=write text + newline (for interactive yes/no prompts). "
+                    "close-stdin=send EOF to stdin (unblocks programs that read until EOF like --body-file -). "
+                    "list=list sessions. get-log=read full stdout/stderr log."
+                ),
             },
             "session_id": {
                 "type": "string",
@@ -25,7 +34,12 @@ TOOL_DEFINITION = {
             },
             "keys": {
                 "type": "string",
-                "description": "Text to send to the process stdin. Required for send-keys and submit.",
+                "description": (
+                    "Text to send to the process stdin. Required for send-keys and submit. "
+                    "For multi-line content (e.g. an email body), call send-keys once per line "
+                    "then call close-stdin to send EOF. "
+                    "Prefer passing the full content via exec's `stdin` parameter at launch instead."
+                ),
             },
             "press_enter": {
                 "type": "boolean",

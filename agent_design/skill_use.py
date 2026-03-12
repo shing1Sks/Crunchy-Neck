@@ -26,7 +26,6 @@ from __future__ import annotations
 
 import os
 import platform
-import shutil
 import sys
 from pathlib import Path
 from typing import Any
@@ -110,10 +109,7 @@ def _is_eligible(meta: dict[str, Any]) -> bool:
     skill_meta: dict[str, Any] = meta.get("metadata", {}) or {}
     requires: dict[str, Any] = skill_meta.get("requires", {}) or {}
 
-    # Binary check: any of the listed binaries must exist on PATH
-    any_bins: list[str] = requires.get("anyBins", []) or []
-    if any_bins and not any(shutil.which(b) for b in any_bins):
-        return False
+    # Binary check skipped — all skills included regardless of PATH availability
 
     # Env var check: all listed vars must be present
     env_vars: list[str] = requires.get("env", []) or []

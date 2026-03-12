@@ -74,6 +74,40 @@ def _send_update(msg: str, title: str, *, medium: str, workspace_root: str, sess
         pass
 
 
+def _send_final_response(content: str, *, medium: str, workspace_root: str, session_id: str) -> None:
+    """Send the agent's final answer as a persistent 'chat' message on Telegram."""
+    if medium != "telegram":
+        return
+    try:
+        from tools import ping_command, PingParams
+        params = PingParams(
+            msg=content,
+            type="chat",
+            medium="telegram",
+        )
+        ping_command(params, workspace_root=workspace_root, agent_session_id=session_id)
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def _delete_status_message(*, workspace_root: str) -> None:
+    """Delete the last 'Working on it...' update message from Telegram, if any."""
+    try:
+        from comm_channels._state import load_state, save_state
+        from comm_channels.telegram.config import load_config
+        from comm_channels.telegram.client import delete_message
+        state = load_state(workspace_root)
+        msg_id: int | None = state.get("last_update_message_id")
+        if msg_id is None:
+            return
+        cfg = load_config(workspace_root)
+        delete_message(cfg.bot_token, cfg.chat_id, msg_id)
+        state.pop("last_update_message_id", None)
+        save_state(workspace_root, state)
+    except Exception:  # noqa: BLE001
+        pass
+
+
 def _send_thinking_snippet(content: str, *, medium: str, workspace_root: str, session_id: str) -> None:
     """Send first 2-3 lines of the model's text content as a thinking update."""
     snippet = _first_lines(content, n=3, max_chars=200)
@@ -266,6 +300,12 @@ def _run_agent_turn(
         if not tool_calls:
             if assistant_msg.content:
                 print(f"\nCrunchy: {assistant_msg.content}")
+                _send_final_response(
+                    assistant_msg.content,
+                    medium=medium,
+                    workspace_root=workspace_root,
+                    session_id=agent_session_id,
+                )
             break
 
         # ── Dispatch each tool call ───────────────────────────────────────────
@@ -396,6 +436,10 @@ def main() -> None:
             chat_fn=chat_complete,
             dispatch_fn=dispatch,
         )
+
+        # Delete the ephemeral status message now that the final answer is visible
+        if medium == "telegram":
+            _delete_status_message(workspace_root=workspace_root)
 
         # Session wrapup — only when tools ran (skip pure chat turns)
         if tools_were_called:
