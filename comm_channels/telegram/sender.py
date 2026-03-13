@@ -115,7 +115,19 @@ def send_query_msg(params: PingParams, cfg: TelegramConfig, workspace_root: str)
         state["listen_message_id"] = sent_msg_id
         save_state(workspace_root, state)
 
-    return _poll_for_text_reply(cfg, sent_msg_id, params.timeout)
+    result = _poll_for_text_reply(cfg, sent_msg_id, params.timeout)
+
+    # Delete the Listening... message the moment we have a reply — keeps the timeline clean
+    if result.status == "response":
+        try:
+            delete_message(cfg.bot_token, cfg.chat_id, sent_msg_id)
+        except TelegramAPIError:
+            pass
+        state2 = load_state(workspace_root)
+        state2.pop("listen_message_id", None)
+        save_state(workspace_root, state2)
+
+    return result
 
 
 # ─── query:options ────────────────────────────────────────────────────────────

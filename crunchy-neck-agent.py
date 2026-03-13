@@ -300,6 +300,10 @@ def _run_agent_turn(
         if not tool_calls:
             if assistant_msg.content:
                 print(f"\nCrunchy: {assistant_msg.content}")
+                # Delete the ephemeral status bubble BEFORE sending the final
+                # response so it never overlaps / duplicates the chat message
+                if medium == "telegram":
+                    _delete_status_message(workspace_root=workspace_root)
                 _send_final_response(
                     assistant_msg.content,
                     medium=medium,

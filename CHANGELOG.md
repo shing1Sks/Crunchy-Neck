@@ -4,6 +4,42 @@ All notable changes to Crunchy-Neck-Agent are documented here.
 
 ---
 
+## [Unreleased] — 2026-03-13 (patch 1)
+
+### Fixed — Telegram communication flow: duplicate messages, "Listening..." accumulation, stale update bubble
+
+Three compounding UX bugs fixed across `sender.py`, `ping_tool.py`, and `crunchy-neck-agent.py`.
+
+**Bug 1 — Duplicate final message** (`crunchy-neck-agent.py`):
+`_send_thinking_snippet` showed the model's final response text in the update bubble, then `_send_final_response` sent the same text as a chat message. The previous `_clear_update_anchor` fix removed `last_update_message_id` from state before `_delete_status_message` could run, leaving the bubble and creating a visible duplicate.
+- Fix: call `_delete_status_message` inside `_run_agent_turn` **before** `_send_final_response`, so the bubble is gone before the chat message appears.
+
+**Bug 2 — "Listening..." accumulates / bad position** (`comm_channels/telegram/sender.py`):
+After the user replied, `send_query_msg` never deleted the "Listening..." message. It sat in the timeline forever; next session it was edited in-place from the old (scrolled-up) position.
+- Fix: after `_poll_for_text_reply` returns a successful response, call `delete_message` on `sent_msg_id` and clear `listen_message_id` from state. Every session now gets a fresh "Listening..." at the bottom.
+
+**Bug 3 — Update bubble stays above mid-session queries** (`tools/ping/ping_tool.py`):
+When the model called `query:msg` or `query:options`, `_clear_update_anchor` only removed the state key — it never deleted the Telegram message. The stale progress bubble stayed above the query, and subsequent updates edited it above where the user was looking.
+- Fix: replaced `_clear_update_anchor` with `_delete_and_clear_anchor(workspace_root, cfg)` — calls `delete_message` on the anchor first, then clears state. Called **before** sending `query:msg` or `query:options` so the query appears on a clean timeline.
+- Removed `_clear_update_anchor` entirely from the `chat` branch (main loop now handles deletion before that point).
+
+**Resulting clean flow per session:**
+```
+[Bot] Listening...                ← NEW message every session
+[User] reply → Listening... deleted immediately
+[Bot] Working on it...            ← new anchor; all tool updates edit this
+      [mid-session query:]
+← anchor DELETED before query
+[Bot] Please log in to X          ← appears on clean line
+[User] done
+[Bot] Working on it...            ← NEW anchor below user reply
+← anchor DELETED
+[Bot] Here's the result!          ← single clean chat message
+[Bot] Listening...                ← fresh at bottom
+```
+
+---
+
 ## [Unreleased] — 2026-03-13
 
 ### Added — `tools/browse/` — Scout computer-use subagent tool (`tools/browse/`)
