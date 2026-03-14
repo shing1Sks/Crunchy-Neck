@@ -165,8 +165,12 @@ async def _run_async(
                         for a in raw_actions
                     ]
 
-                    # Echo the original computer_call item back (preserves all GA fields)
-                    input_list.append(_to_dict(item))
+                    # Echo the original computer_call item back (preserves all GA fields).
+                    # Strip pending_safety_checks — OpenAI won't accept it as input;
+                    # we acknowledge them in the computer_call_output instead.
+                    call_dict = _to_dict(item)
+                    pending_safety_checks = call_dict.pop("pending_safety_checks", None) or []
+                    input_list.append(call_dict)
 
                     # Execute each action in the batch
                     for action_dict in actions_list:
@@ -183,14 +187,17 @@ async def _run_async(
                     # One screenshot after the full batch
                     b64, _ = take_screenshot()
                     log.screenshot_taken(turn=turn)
-                    input_list.append({
+                    output_item: dict[str, Any] = {
                         "type": "computer_call_output",
                         "call_id": call_id,
                         "output": {
                             "type": "computer_screenshot",
                             "image_url": f"data:image/png;base64,{b64}",
                         },
-                    })
+                    }
+                    if pending_safety_checks:
+                        output_item["acknowledged_safety_checks"] = pending_safety_checks
+                    input_list.append(output_item)
                     did_action = True
 
                 # ── Text / message output → check for signals ────────────────

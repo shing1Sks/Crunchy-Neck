@@ -28,7 +28,7 @@ from __future__ import annotations
 
 import json
 import tiktoken
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Literal, Union
 
 _TIKTOKEN_ENC = tiktoken.get_encoding("cl100k_base")

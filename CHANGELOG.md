@@ -4,6 +4,17 @@ All notable changes to Crunchy-Neck-Agent are documented here.
 
 ---
 
+## [Unreleased] — 2026-03-14 (patch 1)
+
+### Fixed — Scout `pending_safety_checks` API 400 error (`computer_agent/agent.py`)
+
+OpenAI's Responses API sometimes includes `pending_safety_checks` in a `computer_call` response item. The loop was echoing the full item back via `_to_dict(item)`, which kept `pending_safety_checks` in the next request's `input` — a field the API rejects with HTTP 400.
+
+- Fix: pop `pending_safety_checks` from the echoed `call_dict` before appending to `input_list`.
+- Fix: carry the popped checks forward as `acknowledged_safety_checks` on the `computer_call_output` item, which is the correct acknowledgement mechanism per OpenAI's CUA spec.
+
+---
+
 ## [Unreleased] — 2026-03-13 (patch 1)
 
 ### Fixed — Telegram communication flow: duplicate messages, "Listening..." accumulation, stale update bubble
