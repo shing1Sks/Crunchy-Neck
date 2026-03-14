@@ -52,6 +52,15 @@ _SHARED_RULES = """\
 - After signalling NEED_INPUT, do nothing — the user's reply arrives as the next message\
 """
 
+_SHARED_TOOLS = """\
+## snapshot tool
+Call snapshot(filename) to save a screenshot directly to .agent/snapshots/{filename}.
+- Always use this instead of Win+Shift+S or any other OS screenshot method.
+- filename is required (e.g. "empty_state.png", "populated_all.png").
+- x1, y1, x2, y2 are optional pixel coordinates to capture a specific region (top-left → bottom-right).
+- monitor=0 (default) captures all screens; monitor=1 captures the primary monitor only.\
+"""
+
 
 # ─── Browser mode ─────────────────────────────────────────────────────────────
 
@@ -92,6 +101,7 @@ BROWSER_SYSTEM_PROMPT: str = "\n\n".join([
     _SHARED_SIGNALS,
     _BROWSER_LOGIN_RULES,
     _SHARED_RULES,
+    _SHARED_TOOLS,
 ])
 
 
@@ -136,6 +146,7 @@ DESKTOP_SYSTEM_PROMPT: str = "\n\n".join([
     _SHARED_SIGNALS,
     _DESKTOP_RULES,
     _SHARED_RULES,
+    _SHARED_TOOLS,
 ])
 
 

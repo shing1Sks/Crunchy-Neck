@@ -238,6 +238,7 @@ def _run_agent_turn(
     whether a session wrapup is worth running.
     """
     from agent_design.memory_compaction import maybe_compact
+    from agent_utils.tool_dispatcher import ImageDispatchResult
 
     tools_were_called = False
 
@@ -314,6 +315,8 @@ def _run_agent_turn(
 
         # ── Dispatch each tool call ───────────────────────────────────────────
         tools_were_called = True
+        pending_image_blocks: list[dict] = []
+
         for tc in tool_calls:
             tool_name = tc.function.name
             arguments_json = tc.function.arguments or "{}"
@@ -329,7 +332,7 @@ def _run_agent_turn(
                 file=sys.stderr,
             )
 
-            result_json = dispatch_fn(
+            result_content = dispatch_fn(
                 tool_name,
                 arguments_json,
                 workspace_root=workspace_root,
@@ -337,16 +340,30 @@ def _run_agent_turn(
                 medium=medium,
             )
 
-            # Result update (after call)
+            # Images can't go in tool result messages — stage them for a user message
+            if isinstance(result_content, ImageDispatchResult):
+                tool_str = result_content.tool_text
+                pending_image_blocks.append(result_content.image_block)
+            else:
+                tool_str = result_content
+
+            # Result update (after call) — never send raw image bytes as display
             _send_tool_result_update(
-                tool_name, result_json,
+                tool_name, tool_str,
                 medium=medium, workspace_root=workspace_root, session_id=agent_session_id,
             )
 
             messages.append({
                 "role": "tool",
                 "tool_call_id": tc.id,
-                "content": result_json,
+                "content": tool_str,
+            })
+
+        # Inject any image files as a user message so the model can see them
+        if pending_image_blocks:
+            messages.append({
+                "role": "user",
+                "content": pending_image_blocks,
             })
 
     else:

@@ -4,6 +4,43 @@ All notable changes to Crunchy-Neck-Agent are documented here.
 
 ---
 
+## [Unreleased] — 2026-03-15 (patch 1)
+
+### Added — Scout `snapshot` function tool (`computer_agent/agent.py`, `computer_agent/prompts.py`)
+
+Scout now has a dedicated `snapshot` function tool that saves screenshots directly to `.agent/snapshots/` without relying on OS-level shortcuts (Win+Shift+S, etc.).
+
+- New `snapshot_tool_fn` function-call definition registered alongside the existing `computer` CUA tool.
+- Scout's loop handles `function_call` items where `name == "snapshot"`, calling `snapshot_command` and returning the saved path as tool output.
+- System prompt (`_SHARED_TOOLS` section) instructs the model to always use `snapshot()` instead of OS screenshot methods; documents `filename`, `x1/y1/x2/y2`, and `monitor` parameters.
+- `_SHARED_TOOLS` injected into both `BROWSER_SYSTEM_PROMPT` and `DESKTOP_SYSTEM_PROMPT`.
+
+### Changed — Snapshot tool: `region` array replaced with `x1/y1/x2/y2` coordinates (`tools/snapshot/`)
+
+The snapshot tool's crop parameter was redesigned from a `[x, y, width, height]` array to four explicit integer fields for better ergonomics with LLM function calling.
+
+- `SnapshotParams`: removed `region: list[int] | None`; added `x1`, `y1`, `x2`, `y2` (all `int | None`) and `filename: str | None`.
+- `snapshot_command`: bounding box built from `x1/y1/x2/y2` when all four are provided; filename derived from `params.filename` (stem preserved, extension forced to match format), falling back to timestamp name.
+- `TOOL_DEFINITION` (`tools/snapshot/__init__.py`): updated schema — replaced `region` array with four individual integer properties; added `filename` string property with description.
+
+### Added — Image file support in the read tool (`tools/read/`)
+
+The `read` tool can now return image files to the model as vision content blocks instead of erroring or returning garbage bytes.
+
+- New `ReadResultImage` datatype (`read_types.py`): status `"image"`, carries `mime_type`, `b64_data`, and `size_bytes`.
+- `read_command` (`read_tool.py`): fast-path on extension (`.png`, `.jpg`, `.jpeg`, `.gif`, `.webp`, `.bmp`) reads bytes and returns `ReadResultImage` with base64-encoded data; never hits binary-detection logic.
+- PDF fast-path also added: uses `pypdf` to extract text page-by-page; returns `ReadResultDone` with structured page content; gracefully returns an error if `pypdf` is not installed.
+
+### Added — Image dispatch pipeline (`agent_utils/tool_dispatcher.py`, `crunchy-neck-agent.py`)
+
+The OpenAI Chat Completions API cannot render images inside `role:tool` messages. A new dispatch pipeline routes image results through a separate `role:user` message.
+
+- New `ImageDispatchResult` dataclass (`tool_dispatcher.py`): carries `tool_text` (plain string for the tool result slot) and `image_block` (OpenAI `image_url` content block).
+- `dispatch()` return type widened to `str | ImageDispatchResult`; returns `ImageDispatchResult` when the tool result is `ReadResultImage`.
+- `_run_agent_turn` (`crunchy-neck-agent.py`): collects `ImageDispatchResult` instances into `pending_image_blocks` per batch; after all tool-call results are appended, injects a single `role:user` message containing all image blocks so the model can see the images on the next turn.
+
+---
+
 ## [Unreleased] — 2026-03-14 (patch 1)
 
 ### Fixed — Scout `pending_safety_checks` API 400 error (`computer_agent/agent.py`)

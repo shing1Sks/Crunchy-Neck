@@ -10,8 +10,16 @@ class SnapshotParams:
     monitor: int = 0
     """0 = all monitors combined (default); 1+ = specific monitor index."""
 
-    region: list[int] | None = None
-    """Optional [x, y, width, height] pixel crop applied after capture."""
+    x1: int | None = None
+    y1: int | None = None
+    x2: int | None = None
+    y2: int | None = None
+    """Optional region: top-left (x1, y1) → bottom-right (x2, y2).
+    All four must be provided together; if any is None the full screen is captured."""
+
+    filename: str | None = None
+    """Custom filename for the saved file (e.g. 'empty_state.png').
+    Saved under .agent/snapshots/{filename}. If None, a timestamp name is used."""
 
     format: Literal["png", "jpeg"] = "png"
     """Output image format."""

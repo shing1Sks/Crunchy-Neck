@@ -11,7 +11,10 @@ TOOL_DEFINITION = {
         "Rules:\n"
         "- 'monitor=0' (default) captures all monitors combined into one image.\n"
         "- 'monitor=1' captures the primary monitor only; 2+ for additional monitors.\n"
-        "- 'region' crops the capture to [x, y, width, height] pixels.\n"
+        "- 'filename' sets the saved file name (e.g. 'empty_state.png'). "
+        "If omitted, a timestamp name is used.\n"
+        "- 'x1, y1, x2, y2' crops the capture to a region (top-left to bottom-right). "
+        "All four must be provided together.\n"
         "- Set 'include_base64=false' to skip embedding the image data "
         "(useful when you only need the saved file path).\n"
         "- Requires Pillow: pip install Pillow"
@@ -24,11 +27,17 @@ TOOL_DEFINITION = {
                 "default": 0,
                 "description": "0 = all monitors combined (default); 1+ = specific monitor.",
             },
-            "region": {
-                "type": "array",
-                "items": {"type": "integer"},
-                "description": "Optional [x, y, width, height] pixel crop.",
+            "filename": {
+                "type": "string",
+                "description": (
+                    "Custom filename for the saved file, e.g. 'empty_state.png'. "
+                    "Saved to .agent/snapshots/{filename}. If omitted, a timestamp name is used."
+                ),
             },
+            "x1": {"type": "integer", "description": "Left edge of capture region (pixels)."},
+            "y1": {"type": "integer", "description": "Top edge of capture region (pixels)."},
+            "x2": {"type": "integer", "description": "Right edge of capture region (pixels)."},
+            "y2": {"type": "integer", "description": "Bottom edge of capture region (pixels)."},
             "format": {
                 "type": "string",
                 "enum": ["png", "jpeg"],

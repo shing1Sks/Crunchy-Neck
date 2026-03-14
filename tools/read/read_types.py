@@ -50,4 +50,13 @@ class ReadResultError(ReadBase):
     error_message: str = ""
 
 
-ReadResult = Union[ReadResultDone, ReadResultError]
+@dataclass(kw_only=True)
+class ReadResultImage(ReadBase):
+    """Returned for image files — dispatcher injects as an OpenAI vision content block."""
+    status: Literal["image"] = "image"
+    mime_type: str = ""
+    b64_data: str = ""
+    size_bytes: int = 0
+
+
+ReadResult = Union[ReadResultDone, ReadResultImage, ReadResultError]

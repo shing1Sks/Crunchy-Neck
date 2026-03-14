@@ -33,19 +33,10 @@ def snapshot_command(
             detail="Pillow is not installed. Run: pip install Pillow",
         )
 
-    # ── Build bounding box from region param ───────────────────────────────────
+    # ── Build bounding box from x1/y1/x2/y2 ──────────────────────────────────
     bbox: tuple[int, int, int, int] | None = None
-    if params.region is not None:
-        if len(params.region) != 4:
-            _audit(event="snapshot.error", agent_session_id=agent_session_id,
-                   workspace_root=workspace_root, error_code="invalid_region",
-                   detail=f"region must be [x, y, width, height], got {params.region!r}")
-            return SnapshotResultError(
-                error_code="invalid_region",
-                detail=f"region must be [x, y, width, height], got {params.region!r}",
-            )
-        x, y, w, h = params.region
-        bbox = (x, y, x + w, y + h)
+    if all(v is not None for v in (params.x1, params.y1, params.x2, params.y2)):
+        bbox = (int(params.x1), int(params.y1), int(params.x2), int(params.y2))
 
     # ── Capture ────────────────────────────────────────────────────────────────
     try:
@@ -60,7 +51,10 @@ def snapshot_command(
     out_dir.mkdir(parents=True, exist_ok=True)
     ts = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     ext = "jpg" if params.format == "jpeg" else "png"
-    filename = f"snapshot-{ts}.{ext}"
+    if params.filename:
+        filename = f"{Path(params.filename).stem}.{ext}"
+    else:
+        filename = f"snapshot-{ts}.{ext}"
     abs_path = out_dir / filename
 
     try:

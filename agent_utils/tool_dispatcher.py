@@ -12,7 +12,24 @@ from __future__ import annotations
 
 import dataclasses
 import json
+from dataclasses import dataclass
 from typing import Any
+
+from tools.read.read_types import ReadResultImage
+
+
+@dataclass
+class ImageDispatchResult:
+    """
+    Returned when a read() call returns an image file.
+
+    tool_text   — plain string to put in the role:tool message (no image bytes)
+    image_block — an OpenAI image_url content block to inject as a separate
+                  role:user message AFTER all tool results in the batch, because
+                  the Chat Completions API does not render images inside tool results.
+    """
+    tool_text: str
+    image_block: dict
 
 
 def _result_to_dict(result: Any) -> dict:
@@ -29,9 +46,11 @@ def dispatch(
     workspace_root: str,
     agent_session_id: str,
     medium: str,
-) -> str:
+) -> str | ImageDispatchResult:
     """
-    Parse arguments_json, call the matching tool, return result as JSON string.
+    Parse arguments_json, call the matching tool.
+    Returns a JSON string for normal results, or ImageDispatchResult for images
+    (caller must inject the image as a user message after all tool results).
     On any error returns {"error": "..."} JSON so the model can decide what to do.
     """
     try:
@@ -41,6 +60,17 @@ def dispatch(
 
     try:
         result = _call_tool(tool_name, args, workspace_root, agent_session_id, medium)
+
+        # Image files — tool result gets a text note; image is injected as user message
+        if isinstance(result, ReadResultImage):
+            return ImageDispatchResult(
+                tool_text=f"Image file read: {result.path} ({result.mime_type}, {result.size_bytes} bytes). Attached below.",
+                image_block={
+                    "type": "image_url",
+                    "image_url": {"url": f"data:{result.mime_type};base64,{result.b64_data}"},
+                },
+            )
+
         return json.dumps(_result_to_dict(result), default=str)
     except Exception as e:  # noqa: BLE001
         return json.dumps({

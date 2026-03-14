@@ -83,6 +83,37 @@ async def _run_async(
     # ── CUA tool definition (GA format — no extra fields) ────────────────────
     computer_tool: dict[str, Any] = {"type": "computer"}
 
+    # ── snapshot function tool — saves files directly without OS workarounds ──
+    snapshot_tool_fn: dict[str, Any] = {
+        "type": "function",
+        "name": "snapshot",
+        "description": (
+            "Save a screenshot to a file in .agent/snapshots/. "
+            "Always use this instead of Win+Shift+S or any OS screenshot method — "
+            "it saves directly with the name you choose to the workspace. "
+            "Optionally crop to a region with x1/y1/x2/y2 coordinates."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "filename": {
+                    "type": "string",
+                    "description": "Filename to save as, e.g. 'empty_state.png'.",
+                },
+                "x1": {"type": "integer", "description": "Left edge of region (optional)."},
+                "y1": {"type": "integer", "description": "Top edge of region (optional)."},
+                "x2": {"type": "integer", "description": "Right edge of region (optional)."},
+                "y2": {"type": "integer", "description": "Bottom edge of region (optional)."},
+                "monitor": {
+                    "type": "integer",
+                    "description": "0 = all screens (default), 1+ = specific monitor.",
+                },
+            },
+            "required": ["filename"],
+            "additionalProperties": False,
+        },
+    }
+
     # ── Seed input_list ──────────────────────────────────────────────────────
     b64_init, _ = take_screenshot()
     system_prompt = get_system_prompt(config.mode)
@@ -128,7 +159,7 @@ async def _run_async(
             try:
                 response = client.responses.create(
                     model=_MODEL,
-                    tools=[computer_tool],
+                    tools=[computer_tool, snapshot_tool_fn],
                     input=input_list,
                 )
             except Exception as exc:
@@ -199,6 +230,48 @@ async def _run_async(
                         output_item["acknowledged_safety_checks"] = pending_safety_checks
                     input_list.append(output_item)
                     did_action = True
+
+                # ── snapshot function_call → save file directly ──────────────
+                elif item_type == "function_call" and getattr(item, "name", None) == "snapshot":
+                    import json as _json
+                    call_id = item.call_id
+                    args = _json.loads(getattr(item, "arguments", "{}"))
+
+                    input_list.append(_to_dict(item))
+                    log.action_execute(turn=turn, action={"type": "snapshot", **args})
+
+                    from tools.snapshot import snapshot_command, SnapshotParams
+                    snap_result = snapshot_command(
+                        SnapshotParams(
+                            filename=args.get("filename"),
+                            x1=args.get("x1"),
+                            y1=args.get("y1"),
+                            x2=args.get("x2"),
+                            y2=args.get("y2"),
+                            monitor=args.get("monitor", 0),
+                            include_base64=False,
+                        ),
+                        workspace_root=workspace_root,
+                        agent_session_id=agent_session_id,
+                    )
+
+                    if snap_result.status == "done":
+                        output_text = (
+                            f"Screenshot saved: {snap_result.path} "
+                            f"({snap_result.width}x{snap_result.height})"
+                        )
+                        log.action_result(turn=turn, desc=output_text)
+                    else:
+                        output_text = f"Snapshot failed: {snap_result.detail}"
+                        log.action_error(turn=turn, action_type="snapshot", error=snap_result.detail)
+
+                    input_list.append({
+                        "type": "function_call_output",
+                        "call_id": call_id,
+                        "output": output_text,
+                    })
+                    _update(f"[scout] {output_text}", config, workspace_root, agent_session_id)
+                    did_action = True  # keeps the loop alive so model can signal DONE
 
                 # ── Text / message output → check for signals ────────────────
                 elif item_type in ("text", "message") or hasattr(item, "content"):

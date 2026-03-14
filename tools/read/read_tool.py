@@ -10,7 +10,18 @@ from .read_types import (
     ReadResult,
     ReadResultDone,
     ReadResultError,
+    ReadResultImage,
 )
+
+_IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp"}
+_IMAGE_MIME: dict[str, str] = {
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".gif": "image/gif",
+    ".webp": "image/webp",
+    ".bmp": "image/bmp",
+}
 
 
 def read_command(
@@ -64,7 +75,71 @@ def read_command(
         )
 
     # ------------------------------------------------------------------
-    # 3. Audit start
+    # 3. Image / PDF fast-path (by extension — never hits binary detection)
+    # ------------------------------------------------------------------
+    suffix = resolved.suffix.lower()
+
+    if suffix in _IMAGE_EXTS:
+        data = resolved.read_bytes()
+        log_event(
+            event="read.done",
+            path=path_str,
+            agent_session_id=agent_session_id,
+            workspace_root=workspace_root,
+            encoding="base64",
+            size_bytes=len(data),
+        )
+        return ReadResultImage(
+            path=path_str,
+            mime_type=_IMAGE_MIME[suffix],
+            b64_data=base64.b64encode(data).decode("ascii"),
+            size_bytes=len(data),
+        )
+
+    if suffix == ".pdf":
+        try:
+            import pypdf  # type: ignore[import]
+            reader = pypdf.PdfReader(path_str)
+            pages_text = []
+            for i, page in enumerate(reader.pages):
+                text = page.extract_text() or ""
+                pages_text.append(f"--- Page {i + 1} ---\n{text}")
+            content = "\n\n".join(pages_text)
+            if not content.strip():
+                content = "[PDF contains no extractable text — may be a scanned image PDF]"
+            log_event(
+                event="read.done",
+                path=path_str,
+                agent_session_id=agent_session_id,
+                workspace_root=workspace_root,
+                encoding="utf-8",
+                size_bytes=len(content.encode()),
+            )
+            return ReadResultDone(
+                path=path_str,
+                content=content,
+                encoding="utf-8",
+                size_bytes=len(content.encode()),
+                total_lines=content.count("\n") + 1,
+                lines_returned=content.count("\n") + 1,
+                truncated=False,
+                truncation_note=None,
+            )
+        except ImportError:
+            return ReadResultError(
+                path=path_str,
+                error_code="BINARY_FILE",
+                error_message="PDF reading requires pypdf — run: pip install pypdf",
+            )
+        except Exception as exc:
+            return ReadResultError(
+                path=path_str,
+                error_code="INTERNAL",
+                error_message=f"PDF parse error: {exc}",
+            )
+
+    # ------------------------------------------------------------------
+    # 4. Audit start
     # ------------------------------------------------------------------
     log_event(
         event="read.start",
