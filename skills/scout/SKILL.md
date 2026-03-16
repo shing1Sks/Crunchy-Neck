@@ -7,6 +7,8 @@ metadata:
   always: false
 ---
 
+> **Web tasks:** Try `agent-browser` first (see agent-browser skill) — it's faster and cheaper. Use Scout when agent-browser fails, or for **desktop GUI automation** (non-browser tasks).
+
 # Scout (Computer-Use Subagent)
 
 Scout controls Chrome or the Windows desktop. Use the `browse` tool to delegate tasks

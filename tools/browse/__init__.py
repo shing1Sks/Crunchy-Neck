@@ -4,12 +4,14 @@ from .browse_types import BrowseParams
 TOOL_DEFINITION = {
     "name": "browse",
     "description": (
-        "Delegate a browser or desktop GUI task to Scout, the computer-use subagent.\n\n"
-        "Scout controls Chrome (browser mode) or the full Windows desktop (desktop mode) "
-        "and returns what it found or did.\n\n"
-        "Use for: web scraping, form filling, GUI automation, navigating apps, "
-        "extracting on-screen data, clicking through multi-step flows.\n\n"
-        "Do NOT use for: tasks that exec/read/write can handle directly."
+        "Launch Scout, the computer-use subagent, to control Chrome or the Windows desktop.\n\n"
+        "PRIMARY use: desktop GUI automation (mode='desktop') — controlling any Windows app, "
+        "file dialogs, non-browser GUIs (Notepad, File Explorer, etc.).\n\n"
+        "WEB FALLBACK use: when agent-browser CLI has already been attempted and failed "
+        "(CAPTCHA, auth wall, broken page, non-zero exit). "
+        "Do NOT use as first choice for web tasks — try agent-browser via exec() first.\n\n"
+        "Do NOT use for: tasks exec/read/write can handle, or any web task you haven't "
+        "tried agent-browser for first."
     ),
     "parameters": {
         "type": "object",

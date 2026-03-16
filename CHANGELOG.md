@@ -4,6 +4,27 @@ All notable changes to Crunchy-Neck-Agent are documented here.
 
 ---
 
+## [Unreleased] — 2026-03-17
+
+### Added — agent-browser CLI skill (`skills/agent_browser/SKILL.md`)
+
+Integrated Vercel Labs' `agent-browser` CLI (globally installed) as the default browser automation approach for all web tasks. The agent now uses `exec()` to run `agent-browser` commands directly rather than launching Scout for every web task.
+
+- New skill at `skills/agent_browser/SKILL.md` with full command reference: navigation, snapshot (`-i` for interactive refs), interaction via `@e1`/`@e2` element refs, semantic find, JS eval, cookies, storage, screenshots, PDF, and visual diff.
+- Headed/headless mode: agent always asks the user before starting — `--headed` opens a visible browser window, headless runs invisibly in the background.
+- Auth fallback chain documented: connect to existing session (port 9222) → named profile → fall back to Scout.
+- Explicit fallback rule: if `agent-browser` returns non-zero exit or can't handle the task, hand off to `browse()` (Scout).
+
+### Changed — Scout (`browse` tool) reframed as desktop-primary / web-fallback
+
+Scout is no longer the default for web tasks. Updated two authoritative sources the model reads at inference time:
+
+- `agent_utils/system_prompt.py` (`_TOOLING_SECTION`): browse line updated to "desktop GUI automation, and web fallback when agent-browser fails"; added `## Web Browsing Priority` block explicitly ordering agent-browser first for all web tasks.
+- `tools/browse/__init__.py` (`TOOL_DEFINITION` description): rewritten to "PRIMARY: desktop GUI automation; WEB FALLBACK: after agent-browser has been attempted and failed" with explicit "Do NOT use as first choice for web tasks."
+- `skills/scout/SKILL.md`: added note at top redirecting web tasks to agent-browser first.
+
+---
+
 ## [Unreleased] — 2026-03-15 (patch 1)
 
 ### Added — Scout `snapshot` function tool (`computer_agent/agent.py`, `computer_agent/prompts.py`)

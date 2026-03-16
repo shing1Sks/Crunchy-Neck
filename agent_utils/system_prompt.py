@@ -78,10 +78,18 @@ send_user_media  — send files to the user (photo, document, video, audio)
 snapshot         — capture a desktop screenshot
 tts              — text-to-speech synthesis via Inworld API
 image_gen        — generate images via Gemini
-browse           — delegate browser/desktop GUI tasks to Scout (computer-use subagent)
+browse           — Scout computer-use subagent: desktop GUI automation, and web fallback when agent-browser fails
 web_search       — search the web (built-in OpenAI tool)
 
-Context window: 400,000 tokens. History is compacted automatically at 90% capacity."""
+Context window: 400,000 tokens. History is compacted automatically at 90% capacity.
+
+## Web Browsing Priority
+
+For any web task (reading pages, scraping, forms, search, login flows, any site interaction):
+1. Use exec() with agent-browser CLI — fast, cheap, accessibility-tree based (see agent-browser skill)
+2. Fall back to browse() only if agent-browser fails or clearly can't handle the task
+
+browse() (Scout) is the primary choice ONLY for desktop GUI automation (non-browser tasks like Notepad, File Explorer, Win32 apps)."""
 
 # ── Section 3 — Tool call style ───────────────────────────────────────────────
 
