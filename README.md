@@ -20,10 +20,14 @@ Still a work in progress. Already shocked by what it can do.
 
 Crunchy Neck is a personal AI agent. Not an assistant — a companion. It treats your work like its own, thinks ahead, and gets things done.
 
-- Powered by **OpenAI** (GPT-5.2, `reasoning_effort=low`)
-- Talks to you via **Terminal** or **Telegram**
-- Acts through a set of 13 tools covering most things you'd want an agent to do
-- Includes **Scout** — a computer-use subagent for browser and desktop GUI automation
+Two variants run on the same architecture and tool stack:
+
+| Agent | Model | Key |
+|---|---|---|
+| `crunchy-neck-agent.py` | GPT-5.2 (`reasoning_effort=low`) via OpenAI | `OPENAI_API_KEY` |
+| `open-crunchy-agent.py` | Kimi K2 (`moonshotai/kimi-k2-instruct-0905`) via Groq | `GROQ_API_KEY` |
+
+Both talk to you via **Terminal** or **Telegram**, act through the same 13 tools, and share the same memory, skills, and session wrapup infrastructure.
 
 If you're new to agents and want something simple to fork, modify, and make your own — this is designed for that.
 
@@ -36,7 +40,7 @@ If you're new to agents and want something simple to fork, modify, and make your
 | `exec` | Run shell commands |
 | `process` | Manage background jobs |
 | `read` / `write` / `edit` | File operations |
-| `browse` | Delegate to Scout (browser or desktop automation) |
+| `browse` | Web browsing via agent-browser CLI (Scout as fallback) |
 | `remember` | Semantic long-term memory via ChromaDB |
 | `ping_user` | Send updates, ask questions, prompt for input |
 | `send_user_media` | Deliver files, audio, video |
@@ -53,7 +57,7 @@ Scout is a full computer-use subagent. Give it a browser task or a desktop task 
 
 ## Setup
 
-**Prerequisites:** Python 3.10+, OpenAI API key (with GPT-5.2 access)
+**Prerequisites:** Python 3.10+, API key for whichever agent you want to run
 
 ```bash
 git clone https://github.com/your-username/crunchy-neck-agent
@@ -80,17 +84,20 @@ export PYTHONPATH="/path/to/crunchy-neck-agent"
 
 **API Keys:**
 
-| Key | Purpose | Required? |
+| Key | Purpose | Required for |
 |---|---|---|
-| `OPENAI_API_KEY` | Main agent, compaction, session wrapup | Yes |
-| `TELEGRAM_BOT_TOKEN` | Telegram medium | Only for `--medium telegram` |
-| `TELEGRAM_CHAT_ID` | Telegram medium | Only for `--medium telegram` |
+| `OPENAI_API_KEY` | crunchy-neck-agent (GPT-5.2), compaction, wrapup | `crunchy-neck-agent.py` |
+| `GROQ_API_KEY` | open-crunchy-agent (Kimi K2 via Groq) | `open-crunchy-agent.py` |
+| `TELEGRAM_BOT_TOKEN` | Telegram medium | `--medium telegram` |
+| `TELEGRAM_CHAT_ID` | Telegram medium | `--medium telegram` |
 | `INWORLD_API_KEY` | TTS tool | Optional |
 | `GEMINI_API_KEY` | Image generation tool | Optional |
 
 ---
 
 ## Running
+
+### crunchy-neck-agent (GPT-5.2)
 
 ```bash
 # Terminal (default)
@@ -103,20 +110,36 @@ python crunchy-neck-agent.py --workspace /path/to/workspace
 python crunchy-neck-agent.py --medium telegram --workspace /path/to/workspace
 ```
 
+### open-crunchy-agent (Kimi K2 / Groq)
+
+```bash
+# Terminal
+python open-crunchy-agent.py
+
+# Terminal with a specific workspace
+python open-crunchy-agent.py --workspace /path/to/workspace
+
+# Telegram
+python open-crunchy-agent.py --medium telegram --workspace /path/to/workspace
+```
+
 ---
 
 ## Project Structure
 
 ```
-crunchy-neck-agent.py   # Entry point
+crunchy-neck-agent.py   # Entry point — GPT-5.2 via OpenAI
+open-crunchy-agent.py   # Entry point — Kimi K2 via Groq
 requirements.txt
 .env.example
 
 agent_utils/            # System prompt builder, tool schemas, dispatcher
+  openai_helpers.py     # OpenAI client + chat_complete (reasoning_effort=low)
+  groq_helpers.py       # Groq client + chat_complete (no reasoning_effort)
 agent_design/           # Session wrapup, compaction, skills, identity
 comm_channels/          # Terminal and Telegram adapters
 computer_agent/         # Scout subagent (browser + desktop automation)
-tools/                  # 12 custom tools
+tools/                  # 13 custom tools
 skills/                 # Skill library (scout, coding_agent, gog)
 memory/                 # Long-term memory (ChromaDB) + session history
 

@@ -91,6 +91,7 @@ class SessionWrapupConfig:
     model: str = WRAPUP_MODEL
     max_tokens: int = WRAPUP_MAX_TOKENS
     max_sessions_in_file: int = MAX_SESSIONS_IN_FILE
+    base_url: str | None = None   # when set, points the OpenAI client at this base URL (e.g. Groq)
 
 
 # ---------------------------------------------------------------------------
@@ -420,16 +421,22 @@ def run_session_wrapup_log(
     prompt = _build_wrapup_prompt(serialised, today)
 
     try:
-        client = openai.OpenAI(api_key=api_key)
-        response = client.chat.completions.create(
-            model=cfg.model,
-            max_completion_tokens=cfg.max_tokens,
-            reasoning_effort="low",
-            messages=[
+        client_kwargs: dict = {"api_key": api_key}
+        if cfg.base_url:
+            client_kwargs["base_url"] = cfg.base_url
+        client = openai.OpenAI(**client_kwargs)
+        call_kwargs: dict = {
+            "model": cfg.model,
+            "max_completion_tokens": cfg.max_tokens,
+            "messages": [
                 {"role": "system", "content": "You are a precise session summariser. Follow the output format exactly."},
                 {"role": "user",   "content": prompt},
             ],
-        )
+        }
+        if not cfg.base_url:
+            # reasoning_effort is OpenAI-specific; omit for Groq-compatible endpoints
+            call_kwargs["reasoning_effort"] = "low"
+        response = client.chat.completions.create(**call_kwargs)
         raw_output: str = response.choices[0].message.content or ""
     except Exception as exc:
         return SessionWrapupResultError(

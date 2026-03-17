@@ -113,19 +113,39 @@ exec("agent-browser get text @e12")
 
 ## Authentication
 
-If a site requires login, try these in order:
+**agent-browser uses its OWN bundled Chromium — not your system Chrome.** Your existing browser logins do not carry over. Sessions only persist when a named `--profile` is used.
 
-1. **Connect to existing Chrome session** (Scout's Chrome may already be logged in on port 9222):
-   ```
+### Rule: always use `--profile main` — one unified profile for everything
+
+```bash
+exec("agent-browser open https://site.com --headed --profile main")
+```
+
+Use **one profile (`main`) for all sites** — LinkedIn, GitHub, Gmail, everything. All logins accumulate in this single profile, exactly like a real browser. A task that touches multiple sites in one session works seamlessly because all sessions are available simultaneously.
+
+**Never create per-site profiles** (`--profile linkedin`, `--profile github`, etc.) — those are isolated contexts that can't share sessions and will break multi-site tasks.
+
+**First-time login for a new site (one-time setup):**
+1. Run: `exec("agent-browser open https://site.com --headed --profile main")`
+2. Ask User to log in through the headed window
+3. Session is saved to `main` permanently — all future tasks reuse it
+
+**All future sessions:** `--profile main` has all accumulated logins. No re-login needed for any previously-authenticated site.
+
+**If you hit a login wall:** close and retry immediately with `--profile main`. Do NOT attempt to automate the login form — ask User to log in once through the headed window.
+
+### Fallback options
+
+1. **Connect to Scout's Chrome session** (only available while Scout is running, port 9222):
+   ```bash
    exec("agent-browser connect 9222")
    ```
 
-2. **Open with a named profile** (preserves login state across sessions):
+2. **Fall back to Scout** if agent-browser can't handle authentication at all:
+   ```python
+   browse(task="<task with full URL>", launch_browser=True)
+   # Scout uses User's real Chrome profile with all logins active
    ```
-   exec("agent-browser open https://site.com --profile User")
-   ```
-
-3. **If agent-browser can't authenticate** → fall back to `browse` (Scout), which uses User's persistent Chrome profile with all logins active.
 
 ---
 
@@ -171,8 +191,10 @@ exec("agent-browser wait --load networkidle")
 exec("agent-browser get text body")        # Confirm submission
 
 # Screenshot for evidence
-exec("agent-browser screenshot /tmp/result.png")
-send_user_media(path="/tmp/result.png")
+# stdout: "✓ Screenshot saved to C:\Users\..\.agent-browser\tmp\screenshots\screenshot-TIMESTAMP.png"
+result = exec("agent-browser screenshot")
+path = result.stdout.split("Screenshot saved to")[-1].strip()
+send_user_media(path=path)
 ```
 
 ---

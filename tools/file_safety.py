@@ -32,6 +32,11 @@ def _matches_sensitive(path_str: str) -> bool:
     return False
 
 
+# agent-browser writes screenshots and other tmp files here — allowed as a secondary root
+# so send_user_media can access them without requiring a workspace copy.
+AGENT_BROWSER_TMP: Path = Path.home() / ".agent-browser" / "tmp"
+
+
 def resolve_path(
     path: str,
     workspace_root: str,
@@ -43,7 +48,8 @@ def resolve_path(
     (Path(path), error_code) on failure where error_code is "BLOCKED_PATH".
 
     Checks performed (in order):
-    1. Resolve symlinks; ensure the result stays inside workspace_root.
+    1. Resolve symlinks; ensure the result stays inside workspace_root OR
+       inside AGENT_BROWSER_TMP (screenshots from agent-browser CLI).
     2. Sensitive-file blocklist.
     """
     workspace = Path(workspace_root).resolve()
@@ -61,11 +67,14 @@ def resolve_path(
     except OSError:
         resolved = candidate.absolute()
 
-    # Containment check.
+    # Containment check — workspace root OR agent-browser tmp dir.
     try:
         resolved.relative_to(workspace)
     except ValueError:
-        return (resolved, "BLOCKED_PATH")
+        try:
+            resolved.relative_to(AGENT_BROWSER_TMP)
+        except ValueError:
+            return (resolved, "BLOCKED_PATH")
 
     # Sensitive-file check against the resolved path string.
     if _matches_sensitive(str(resolved)):

@@ -51,6 +51,7 @@ class CompactionConfig:
     keep_last_n: int = DEFAULT_KEEP_LAST_N
     model: str = COMPACTION_MODEL
     compaction_max_tokens: int = COMPACTION_MAX_TOKENS
+    base_url: str | None = None   # when set, points the OpenAI client at this base URL (e.g. Groq)
 
 
 # ── Result types (discriminated union, matching project conventions) ────────────
@@ -278,23 +279,31 @@ def run_compaction(
     history_text = _serialize_history(messages)
     compaction_prompt = _COMPACTION_PROMPTS[level]
 
-    client = openai.OpenAI(api_key=api_key)
+    client_kwargs: dict = {"api_key": api_key}
+    if config.base_url:
+        client_kwargs["base_url"] = config.base_url
+    client = openai.OpenAI(**client_kwargs)
+
+    compaction_messages = [
+        {"role": "system", "content": compaction_prompt},
+        {
+            "role": "user",
+            "content": (
+                "Here is the full conversation history to compact:\n\n"
+                + history_text
+            ),
+        },
+    ]
+    call_kwargs: dict = {
+        "model": config.model,
+        "max_completion_tokens": config.compaction_max_tokens,
+        "messages": compaction_messages,
+    }
+    if not config.base_url:
+        # reasoning_effort is OpenAI-specific; omit for Groq-compatible endpoints
+        call_kwargs["reasoning_effort"] = "low"
     try:
-        response = client.chat.completions.create(
-            model=config.model,
-            max_completion_tokens=config.compaction_max_tokens,
-            reasoning_effort="low",
-            messages=[
-                {"role": "system", "content": compaction_prompt},
-                {
-                    "role": "user",
-                    "content": (
-                        "Here is the full conversation history to compact:\n\n"
-                        + history_text
-                    ),
-                },
-            ],
-        )
+        response = client.chat.completions.create(**call_kwargs)
     except Exception as exc:
         raise RuntimeError(f"Compaction API call failed: {exc}") from exc
 

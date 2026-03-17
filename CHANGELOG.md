@@ -6,6 +6,33 @@ All notable changes to Crunchy-Neck-Agent are documented here.
 
 ## [Unreleased] — 2026-03-17
 
+### Added — open-crunchy-agent: Kimi K2 variant on Groq Cloud
+
+New parallel agent entrypoint running entirely on open-source models via Groq Cloud.
+
+- `open-crunchy-agent.py` — mirrors `crunchy-neck-agent.py` exactly but uses Groq API (`GROQ_API_KEY`) and Kimi K2 (`moonshotai/kimi-k2-instruct-0905`). Same tools, dispatcher, system prompt builder, memory, skills, and Telegram plumbing. Runs independently; no cross-contamination with the OpenAI agent.
+- `agent_utils/groq_helpers.py` — Groq client factory and `groq_chat_complete()` wrapper. Intentionally omits `reasoning_effort` (not supported by Kimi K2 on Groq). Uses `openai` SDK pointed at `https://api.groq.com/openai/v1`.
+- Groq-tuned compaction config: 262K context window, 88% threshold (~230K trigger), 16K output headroom.
+- `.env.example` updated with `GROQ_API_KEY` entry.
+
+Model specs: 262K context, 16K max output, tool/function calling supported, ~200 tok/s, $1/$3 per 1M input/output tokens.
+
+### Changed — `CompactionConfig` and `SessionWrapupConfig` now accept `base_url`
+
+Added optional `base_url: str | None = None` field to both dataclasses in `agent_design/memory_compaction.py` and `agent_design/session_wrapup_log.py`. When set, the OpenAI client is created with that base URL (enabling Groq or any other OpenAI-compatible endpoint). When `base_url` is present, `reasoning_effort` is automatically omitted from the API call. Existing default behavior (OpenAI, `reasoning_effort=low`) is unchanged.
+
+### Fixed — `send_user_media` now allows agent-browser screenshot paths
+
+`tools/file_safety.py`: added `AGENT_BROWSER_TMP = ~/.agent-browser/tmp` as a secondary allowed root in `resolve_path()`. Previously, any path outside `workspace_root` was rejected with `BLOCKED_PATH`, causing `send_user_media` to fail when the agent passed a screenshot path from `agent-browser screenshot`. The sensitive-file blocklist still applies to all paths.
+
+### Fixed — agent-browser unified profile design (`skills/agent_browser/SKILL.md`)
+
+Replaced the per-site profile pattern (`--profile linkedin`, `--profile github`) with a single unified `--profile main` used for all sites. Per-site profiles create isolated browser contexts that break multi-site tasks. One profile accumulates all logins, matching how a real browser works. Also fixed the broken screenshot example (was pointing at `/tmp/result.png`; now parses the actual path from `agent-browser screenshot` stdout).
+
+---
+
+## [Unreleased] — 2026-03-17
+
 ### Added — agent-browser CLI skill (`skills/agent_browser/SKILL.md`)
 
 Integrated Vercel Labs' `agent-browser` CLI (globally installed) as the default browser automation approach for all web tasks. The agent now uses `exec()` to run `agent-browser` commands directly rather than launching Scout for every web task.
